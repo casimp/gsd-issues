@@ -62,9 +62,17 @@ export interface ToolResult {
 }
 
 export interface ToolDefinition {
+  name: string;
+  label: string;
   description: string;
   parameters: TSchema;
-  execute(params: unknown, ctx: ExtensionCommandContext): Promise<ToolResult>;
+  execute(
+    toolCallId: string,
+    params: unknown,
+    signal: AbortSignal,
+    onUpdate: unknown,
+    ctx: ExtensionCommandContext,
+  ): Promise<ToolResult>;
 }
 
 export interface ToolResultEvent {
@@ -76,7 +84,7 @@ export interface ToolResultEvent {
 
 export interface ExtensionAPI {
   registerCommand(name: string, definition: CommandDefinition): void;
-  registerTool(name: string, definition: ToolDefinition): void;
+  registerTool(tool: ToolDefinition): void;
   on(
     event: "tool_result",
     handler: (event: ToolResultEvent, ctx: ExtensionCommandContext) => void | Promise<void>,
@@ -104,11 +112,13 @@ const SUBCOMMANDS = ["setup", "sync", "import", "close", "status"] as const;
 
 export default function (pi: ExtensionAPI): void {
   // Register the sync tool for LLM callers
-  pi.registerTool("gsd_issues_sync", {
+  pi.registerTool({
+    name: "gsd_issues_sync",
+    label: "Sync Issues",
     description:
       "Sync GSD roadmap slices to remote issues on GitLab/GitHub. Creates issues for unmapped slices with milestone, assignee, labels, weight, and epic support.",
     parameters: SyncToolSchema,
-    async execute(params: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
       const typedParams = params as SyncToolParams;
       const cwd = process.cwd();
 
@@ -182,11 +192,13 @@ export default function (pi: ExtensionAPI): void {
   });
   type CloseToolParams = Static<typeof CloseToolSchema>;
 
-  pi.registerTool("gsd_issues_close", {
+  pi.registerTool({
+    name: "gsd_issues_close",
+    label: "Close Issue",
     description:
       "Close the remote issue mapped to a GSD slice. Applies done label (GitLab) or close reason (GitHub) from config.",
     parameters: CloseToolSchema,
-    async execute(params: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
       const typedParams = params as CloseToolParams;
       const cwd = process.cwd();
 
@@ -231,11 +243,13 @@ export default function (pi: ExtensionAPI): void {
   });
 
   // Register the import tool for LLM callers
-  pi.registerTool("gsd_issues_import", {
+  pi.registerTool({
+    name: "gsd_issues_import",
+    label: "Import Issues",
     description:
       "Import issues from GitLab/GitHub as structured markdown. Fetches open issues filtered by milestone, labels, state, and assignee. Returns formatted markdown with issue IDs, titles, labels, weight, milestone, assignee, and truncated descriptions.",
     parameters: ImportToolSchema,
-    async execute(params: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
       const typedParams = params as ImportToolParams;
       const cwd = process.cwd();
 

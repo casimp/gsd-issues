@@ -336,8 +336,8 @@ describe("gsd_issues_sync tool registration", () => {
     mod.default(pi);
 
     expect(registerTool).toHaveBeenCalledWith(
-      "gsd_issues_sync",
       expect.objectContaining({
+        name: "gsd_issues_sync",
         description: expect.stringContaining("Sync GSD roadmap slices"),
         parameters: expect.objectContaining({
           type: "object",
@@ -374,8 +374,8 @@ describe("gsd_issues_sync tool registration", () => {
       mod.default(pi);
 
       // Get the registered tool's execute fn
-      const toolDef = registerTool.mock.calls[0][1] as ToolDefinition;
-      const result = await toolDef.execute({}, makeCtx());
+      const toolDef = registerTool.mock.calls[0][0] as ToolDefinition;
+      const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, makeCtx());
 
       expect(result.content).toHaveLength(1);
       expect(result.content[0].type).toBe("text");
@@ -413,8 +413,8 @@ describe("gsd_issues_sync tool registration", () => {
       const mod = await import("../../index.js");
       mod.default(pi);
 
-      const toolDef = registerTool.mock.calls[0][1] as ToolDefinition;
-      const result = await toolDef.execute({}, makeCtx());
+      const toolDef = registerTool.mock.calls[0][0] as ToolDefinition;
+      const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, makeCtx());
 
       expect(result.content[0].text).toContain("Nothing to sync");
     } finally {

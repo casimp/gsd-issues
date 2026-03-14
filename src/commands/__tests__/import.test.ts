@@ -305,11 +305,11 @@ describe("gsd_issues_import tool registration", () => {
     extensionFactory(pi);
 
     const importCall = registerTool.mock.calls.find(
-      (call) => call[0] === "gsd_issues_import",
+      (call) => call[0].name === "gsd_issues_import",
     );
     expect(importCall).toBeDefined();
 
-    const toolDef = importCall![1] as ToolDefinition;
+    const toolDef = importCall![0] as ToolDefinition;
     expect(toolDef.description).toBeTruthy();
     expect(toolDef.parameters).toBeDefined();
     expect(typeof toolDef.execute).toBe("function");
@@ -334,12 +334,12 @@ describe("gsd_issues_import tool registration", () => {
       extensionFactory(pi);
 
       const importCall = registerTool.mock.calls.find(
-        (call) => call[0] === "gsd_issues_import",
+        (call) => call[0].name === "gsd_issues_import",
       );
-      const toolDef = importCall![1] as ToolDefinition;
+      const toolDef = importCall![0] as ToolDefinition;
 
       const ctx = makeCtx();
-      const result = await toolDef.execute({}, ctx);
+      const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, ctx);
 
       expect(result.content[0].text).toContain("## #10: Implement auth");
       expect(result.details).toEqual(
@@ -373,12 +373,12 @@ describe("gsd_issues_import tool registration", () => {
       extensionFactory(pi);
 
       const importCall = registerTool.mock.calls.find(
-        (call) => call[0] === "gsd_issues_import",
+        (call) => call[0].name === "gsd_issues_import",
       );
-      const toolDef = importCall![1] as ToolDefinition;
+      const toolDef = importCall![0] as ToolDefinition;
 
       const ctx = makeCtx();
-      const result = await toolDef.execute({}, ctx);
+      const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, ctx);
 
       expect(result.content[0].text).toBe("No issues found.");
     } finally {

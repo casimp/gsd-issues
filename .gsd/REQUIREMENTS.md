@@ -144,7 +144,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S06
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — pi manifest present (pi.extensions: ["./src/index.ts"]), npm pack produces clean tarball (90 files, 77.6kB), tsconfig.build.json excludes tests from dist, registerTool uses single-arg ToolDefinition matching pi's real API (D028), prepublishOnly runs typecheck+test+build, README with installation/setup/usage docs. 188 tests pass. Runtime load validation pending UAT.
 - Notes: package.json with pi manifest, proper exports, README
 
 ## Validated
@@ -204,7 +204,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R010 | integration | active | M001/S04 | M001/S03, M001/S05 | unmapped |
 | R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |
 | R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | unmapped |
-| R013 | launchability | active | M001/S06 | none | unmapped |
+| R013 | launchability | active | M001/S06 | none | contract |
 | R020 | differentiator | deferred | none | none | unmapped |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |

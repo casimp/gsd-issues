@@ -12,9 +12,9 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-S01 (provider abstraction), S02 (config and setup), S03 (sync workflow), S04 (auto-close), and S05 (import) complete. All three core workflows are implemented: sync creates remote issues from roadmap slices, close auto-closes mapped issues when a slice summary is written, and import fetches remote issues and formats them as structured markdown for LLM planning input. The Issue type now includes optional weight, milestone, assignee, and description fields populated by both providers. 188 mock-based tests passing across 13 test files, typecheck clean.
+All six slices of M001 complete. S01 (provider abstraction), S02 (config and setup), S03 (sync workflow), S04 (auto-close), S05 (import), and S06 (npm packaging) are done. The extension is fully implemented: three core workflows (sync, close, import) work on both GitLab and GitHub, lifecycle hook auto-closes issues on slice completion, slash commands and LLM-callable tools registered, events emitted for composability. The package is npm-distributable with pi manifest, clean build config, and README documentation. 188 mock-based tests passing across 13 test files, typecheck clean.
 
-Next: S06 (npm packaging and distribution) — the final slice to make the extension installable via npm.
+Milestone M001 is code-complete. UAT pending on real GitLab and GitHub repositories.
 
 ## Architecture / Key Patterns
 
@@ -32,4 +32,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 ## Milestone Sequence
 
-- [ ] M001: Issue tracker integration — Sync, close, and import workflows for GitLab and GitHub with npm distribution
+- [x] M001: Issue tracker integration — Sync, close, and import workflows for GitLab and GitHub with npm distribution

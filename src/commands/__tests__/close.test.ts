@@ -214,11 +214,11 @@ describe("gsd_issues_close tool registration", () => {
 
     // Find the close tool registration
     const closeCall = registerTool.mock.calls.find(
-      (call) => call[0] === "gsd_issues_close",
+      (call) => call[0].name === "gsd_issues_close",
     );
     expect(closeCall).toBeDefined();
 
-    const toolDef = closeCall![1] as ToolDefinition;
+    const toolDef = closeCall![0] as ToolDefinition;
     expect(toolDef.description).toBeTruthy();
     expect(toolDef.parameters).toBeDefined();
     expect(typeof toolDef.execute).toBe("function");
@@ -242,12 +242,12 @@ describe("gsd_issues_close tool registration", () => {
       extensionFactory(pi);
 
       const closeCall = registerTool.mock.calls.find(
-        (call) => call[0] === "gsd_issues_close",
+        (call) => call[0].name === "gsd_issues_close",
       );
-      const toolDef = closeCall![1] as ToolDefinition;
+      const toolDef = closeCall![0] as ToolDefinition;
 
       const ctx = makeCtx();
-      const result = await toolDef.execute({ slice_id: "S01" }, ctx);
+      const result = await toolDef.execute("test-call-id", { slice_id: "S01" }, new AbortController().signal, undefined, ctx);
 
       expect(result.content[0].text).toContain("Closed issue #100");
     } finally {

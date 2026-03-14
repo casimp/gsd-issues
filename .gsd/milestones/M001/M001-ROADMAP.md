@@ -65,7 +65,7 @@ This milestone is complete only when all are true:
 - [x] **S05: Import workflow** `risk:low` `depends:[S01,S02]`
   > After this: user runs /issues import, issues are fetched from GitLab/GitHub filtered by milestone/label, formatted as structured markdown, and handed to the LLM for planning interpretation.
 
-- [ ] **S06: npm packaging and distribution** `risk:low` `depends:[S01,S02,S03,S04,S05]`
+- [x] **S06: npm packaging and distribution** `risk:low` `depends:[S01,S02,S03,S04,S05]`
   > After this: user can npm install -g gsd-issues, add it to settings.json packages array, and the extension loads in pi with all commands, tools, and hooks working.
 
 ## Boundary Map
