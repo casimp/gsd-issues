@@ -134,7 +134,7 @@ The extension emits events on `pi.events` for composability:
 |-------|---------|------|
 | `gsd-issues:sync-complete` | `{ milestone, created, skipped, errors }` | After sync finishes |
 | `gsd-issues:close-complete` | `{ sliceId, milestone, issueId, url }` | After issue is closed |
-| `gsd-issues:import-complete` | `{ issueCount, markdown }` | After import finishes |
+| `gsd-issues:import-complete` | `{ issueCount }` | After import finishes |
 
 ## Requirements
 
