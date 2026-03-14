@@ -12,7 +12,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: none
-- Validation: contract — IssueProvider interface defined, both providers implement it, detectProvider resolves SSH/HTTPS remotes (mock-tested). Runtime validation pending S03.
+- Validation: contract — IssueProvider interface defined, both providers implement it, detectProvider resolves SSH/HTTPS remotes (mock-tested). Consumed by S03 sync workflow. Runtime validation pending UAT.
 - Notes: Auto-detect from git remote (gitlab.com → GitLab, github.com → GitHub)
 
 ### R002 — Unified config with interactive setup
@@ -23,7 +23,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: none
-- Validation: contract — Config type system with structural validation (24 tests), interactive setup with CLI discovery and fallback paths (11 tests). loadConfig/saveConfig round-trip, validateConfig catches missing/invalid fields, setup handles both providers with auth failure and empty milestone fallbacks. Runtime validation pending S03+.
+- Validation: contract — Config type system with structural validation (24 tests), interactive setup with CLI discovery and fallback paths (11 tests). loadConfig/saveConfig round-trip, validateConfig catches missing/invalid fields, setup handles both providers with auth failure and empty milestone fallbacks. Consumed by S03 sync workflow. Runtime validation pending UAT.
 - Notes: Setup command discovers repo patterns (milestones, labels, branches) and walks user through config
 
 ### R003 — Sync: roadmap slices → remote issues
@@ -34,7 +34,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — Full sync pipeline tested: creates issues for unmapped slices, skips mapped, crash-safe map persistence, dry-run preview. 33 sync-related tests. UAT pending with real remotes.
 - Notes: Must support re-running safely (skip already-mapped slices)
 
 ### R004 — Close: auto-close on slice completion
@@ -67,7 +67,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: unmapped
+- Validation: contract — Epic assignment via REST API (glab api), weight mapping (fibonacci/linear from risk level), labels from config. 22 sync tests cover GitLab-specific paths. UAT pending.
 - Notes: Epic assignment requires REST API (not CLI flag). Weight strategy and reorganisation config from predecessor skills.
 
 ### R007 — GitHub support (milestones, labels, projects)
@@ -78,7 +78,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: unmapped
+- Validation: contract — Milestone and label assignment passed through CreateIssueOpts, GitHub provider path tested in sync. UAT pending.
 - Notes: No native epics or weight — use milestones, labels, projects
 
 ### R008 — ISSUE-MAP.json mapping persistence
@@ -89,7 +89,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: M001/S03, M001/S04
-- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Runtime validation pending S03.
+- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Crash-safe persistence during sync (save after each creation). Runtime validation pending UAT.
 - Notes: Clean break from predecessor GITLAB-MAP.json — new format only
 
 ### R009 — Sync surfaced as prompted step in GSD flow
@@ -100,7 +100,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — Confirmation flow implemented in handleSync: preview shows slices, ctx.ui.confirm() gates issue creation. Tool mode skips confirmation (D022). 11 command tests cover confirm/decline flows. UAT pending.
 - Notes: Not manual-only, not auto — prompted step in the workflow
 
 ### R010 — Event bus emissions for composability
@@ -111,7 +111,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: M001/S03, M001/S05
-- Validation: unmapped
+- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. Close/import events pending S04/S05.
 - Notes: Cheap to add, enables future extension interop
 
 ### R011 — Slash commands (/issues sync, import, close, setup)
@@ -122,7 +122,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: M001/S03, M001/S04, M001/S05
-- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync`/`import`/`close`/`status` stubbed with "not yet implemented" notifications. Runtime validation pending S03–S05.
+- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow. `import`/`close`/`status` stubbed. Runtime validation pending S04–S05.
 - Notes: Single /issues command with subcommand routing
 
 ### R012 — LLM-callable tools with typed params
@@ -133,7 +133,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04, M001/S05
-- Validation: unmapped
+- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). Returns structured ToolResult. 2 tool-specific tests. Import/close tools pending S04/S05.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
 
 ### R013 — npm packaging and distribution

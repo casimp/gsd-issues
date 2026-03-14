@@ -12,9 +12,9 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-S01 (provider abstraction) and S02 (config and setup command) complete. The provider layer wraps `glab`/`gh` CLIs via injected exec functions with auto-detection from git remote. The config layer provides `loadConfig`/`saveConfig`/`validateConfig` for `.gsd/issues.json`. The `/issues` command is registered with subcommand routing — `setup` is fully interactive with CLI-driven discovery and graceful fallbacks, while `sync`/`import`/`close`/`status` are stubbed. 85 mock-based tests passing, typecheck clean.
+S01 (provider abstraction), S02 (config and setup command), and S03 (sync workflow) complete. The sync pipeline creates remote issues from roadmap slices with milestone/assignee/labels/weight support, GitLab epic assignment via REST, crash-safe ISSUE-MAP.json persistence, and interactive confirmation flow. Both `/issues sync` command and `gsd_issues_sync` LLM tool are wired up. ExtensionAPI extended with `registerTool`, `exec`, and `events`. 136 mock-based tests passing across 9 test files, typecheck clean.
 
-Next: S03 (sync workflow) — creating remote issues from roadmap slices with confirmation flow.
+Next: S04 (auto-close on slice completion) — lifecycle hook watching for summary writes to auto-close mapped issues.
 
 ## Architecture / Key Patterns
 
