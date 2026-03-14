@@ -1,6 +1,6 @@
 # gsd-issues
 
-Issue tracker integration for [GSD](https://github.com/gsd-tools/gsd) and [pi](https://github.com/gsd-tools/pi-coding-agent). Syncs GSD roadmap slices to GitHub/GitLab issues, imports remote issues for planning, and auto-closes issues on slice completion.
+Issue tracker integration for GSD and pi. Syncs GSD roadmap slices to GitHub/GitLab issues, imports remote issues for planning, and auto-closes issues on slice completion.
 
 ## Features
 
