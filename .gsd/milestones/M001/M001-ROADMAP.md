@@ -53,7 +53,7 @@ This milestone is complete only when all are true:
 - [x] **S01: Provider abstraction and core types** `risk:medium` `depends:[]`
   > After this: pi.exec("glab"/"gh") calls work through the provider interface, auto-detection picks the right provider from git remote, ISSUE-MAP.json read/write works.
 
-- [ ] **S02: Config and setup command** `risk:medium` `depends:[S01]`
+- [x] **S02: Config and setup command** `risk:medium` `depends:[S01]`
   > After this: user runs /issues setup, walks through interactive config, .gsd/issues.json is written and validated. /issues command registered with subcommand routing.
 
 - [ ] **S03: Sync workflow** `risk:high` `depends:[S01,S02]`

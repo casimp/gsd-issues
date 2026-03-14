@@ -23,7 +23,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — Config type system with structural validation (24 tests), interactive setup with CLI discovery and fallback paths (11 tests). loadConfig/saveConfig round-trip, validateConfig catches missing/invalid fields, setup handles both providers with auth failure and empty milestone fallbacks. Runtime validation pending S03+.
 - Notes: Setup command discovers repo patterns (milestones, labels, branches) and walks user through config
 
 ### R003 — Sync: roadmap slices → remote issues
@@ -122,7 +122,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: M001/S03, M001/S04, M001/S05
-- Validation: unmapped
+- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync`/`import`/`close`/`status` stubbed with "not yet implemented" notifications. Runtime validation pending S03–S05.
 - Notes: Single /issues command with subcommand routing
 
 ### R012 — LLM-callable tools with typed params
