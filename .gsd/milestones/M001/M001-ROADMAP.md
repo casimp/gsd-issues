@@ -50,7 +50,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Provider abstraction and core types** `risk:medium` `depends:[]`
+- [x] **S01: Provider abstraction and core types** `risk:medium` `depends:[]`
   > After this: pi.exec("glab"/"gh") calls work through the provider interface, auto-detection picks the right provider from git remote, ISSUE-MAP.json read/write works.
 
 - [ ] **S02: Config and setup command** `risk:medium` `depends:[S01]`

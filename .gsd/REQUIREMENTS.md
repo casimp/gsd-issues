@@ -12,7 +12,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — IssueProvider interface defined, both providers implement it, detectProvider resolves SSH/HTTPS remotes (mock-tested). Runtime validation pending S03.
 - Notes: Auto-detect from git remote (gitlab.com → GitLab, github.com → GitHub)
 
 ### R002 — Unified config with interactive setup
@@ -89,7 +89,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: M001/S03, M001/S04
-- Validation: unmapped
+- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Runtime validation pending S03.
 - Notes: Clean break from predecessor GITLAB-MAP.json — new format only
 
 ### R009 — Sync surfaced as prompted step in GSD flow
@@ -192,14 +192,14 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 | ID | Class | Status | Primary owner | Supporting | Proof |
 |---|---|---|---|---|---|
-| R001 | core-capability | active | M001/S01 | none | unmapped |
+| R001 | core-capability | active | M001/S01 | none | contract |
 | R002 | core-capability | active | M001/S02 | none | unmapped |
 | R003 | primary-user-loop | active | M001/S03 | none | unmapped |
 | R004 | primary-user-loop | active | M001/S04 | none | unmapped |
 | R005 | core-capability | active | M001/S05 | none | unmapped |
 | R006 | integration | active | M001/S03 | M001/S04 | unmapped |
 | R007 | integration | active | M001/S03 | M001/S04 | unmapped |
-| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | unmapped |
+| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | contract |
 | R009 | primary-user-loop | active | M001/S03 | none | unmapped |
 | R010 | integration | active | M001/S04 | M001/S03, M001/S05 | unmapped |
 | R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |

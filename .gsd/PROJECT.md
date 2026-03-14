@@ -12,7 +12,7 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-Greenfield. RESEARCH.md contains architecture decisions, pi extension API analysis, and predecessor skill reference. No code written yet.
+S01 (provider abstraction and core types) complete. `IssueProvider` interface defined with GitLab and GitHub implementations wrapping `glab`/`gh` CLIs via injected exec functions. Provider auto-detection from git remote, ISSUE-MAP.json persistence with structural validation. 50 mock-based tests passing, typecheck clean. No runtime code yet — library modules only.
 
 ## Architecture / Key Patterns
 
