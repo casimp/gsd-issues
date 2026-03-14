@@ -12,19 +12,21 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-All six slices of M001 complete. S01 (provider abstraction), S02 (config and setup), S03 (sync workflow), S04 (auto-close), S05 (import), and S06 (npm packaging) are done. The extension is fully implemented: three core workflows (sync, close, import) work on both GitLab and GitHub, lifecycle hook auto-closes issues on slice completion, slash commands and LLM-callable tools registered, events emitted for composability. The package is npm-distributable with pi manifest, clean build config, and README documentation. 188 mock-based tests passing across 13 test files, typecheck clean.
+M001 (Issue Tracker Integration) is complete — all six slices delivered, 188 contract tests passing, typecheck clean. The extension is fully implemented with three core workflows (sync, close, import) working on both GitLab and GitHub through provider abstraction. Lifecycle hook auto-closes issues on slice completion. Slash commands, LLM-callable tools, and event bus emissions all wired. Package is npm-distributable with pi manifest and README.
 
-Milestone M001 is code-complete. UAT pending on real GitLab and GitHub repositories.
+All verification is contract-level (mock-based). UAT against real GitLab and GitHub repositories has not been performed.
 
 ## Architecture / Key Patterns
 
 - **Extension entry point:** `index.ts` exports a default function receiving `ExtensionAPI`
 - **Provider abstraction:** `IssueProvider` interface with GitLab (`glab` CLI) and GitHub (`gh` CLI) implementations, auto-detected from git remote
+- **ExecFn injection:** All CLI-calling modules accept an optional exec function — tests supply mocks, runtime passes `pi.exec`
 - **Config:** Unified `.gsd/issues.json` with provider-specific sections, interactive setup via `/issues setup`
-- **Mapping:** `ISSUE-MAP.json` per milestone in `.gsd/milestones/{MID}/`
-- **Lifecycle hooks:** `pi.on("tool_result", ...)` watching for summary writes to trigger auto-close
-- **Event bus:** Emits `gsd-issues:*` events on `pi.events` for composability
-- **Distribution:** npm package, installed via pi's package manager
+- **Mapping:** `ISSUE-MAP.json` per milestone in `.gsd/milestones/{MID}/`, crash-safe writes (save after each creation)
+- **Lifecycle hooks:** `pi.on("tool_result", ...)` watching for S##-SUMMARY.md writes to trigger auto-close
+- **Event bus:** Emits `gsd-issues:sync-complete`, `gsd-issues:close-complete`, `gsd-issues:import-complete` on `pi.events`
+- **Tools:** Three LLM-callable tools registered via `pi.registerTool()` with TypeBox schemas
+- **Distribution:** npm package with pi manifest, installed via pi's package manager
 
 ## Capability Contract
 
