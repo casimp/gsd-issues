@@ -45,7 +45,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — closeSliceIssue() orchestration tested (8 tests), tool_result hook with write-tool matching and S##-SUMMARY.md path pattern tested (14 tests), /issues close command and gsd_issues_close tool both delegate to shared close function, edge cases covered (already-closed, missing map, missing config, non-summary writes). 158 tests total, 0 regressions. UAT pending with real remotes.
 - Notes: Hook watches for S##-SUMMARY.md writes
 
 ### R005 — Import: fetch issues for LLM planning
@@ -67,7 +67,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: contract — Epic assignment via REST API (glab api), weight mapping (fibonacci/linear from risk level), labels from config. 22 sync tests cover GitLab-specific paths. UAT pending.
+- Validation: contract — Epic assignment via REST API (glab api), weight mapping (fibonacci/linear from risk level), labels from config. 22 sync tests cover GitLab-specific paths. Done label (T::Done default) applied on close via config-driven doneLabel option (S04). UAT pending.
 - Notes: Epic assignment requires REST API (not CLI flag). Weight strategy and reorganisation config from predecessor skills.
 
 ### R007 — GitHub support (milestones, labels, projects)
@@ -78,7 +78,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: contract — Milestone and label assignment passed through CreateIssueOpts, GitHub provider path tested in sync. UAT pending.
+- Validation: contract — Milestone and label assignment passed through CreateIssueOpts, GitHub provider path tested in sync. Close reason passed through config-driven option on close (S04). UAT pending.
 - Notes: No native epics or weight — use milestones, labels, projects
 
 ### R008 — ISSUE-MAP.json mapping persistence
@@ -89,7 +89,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: M001/S03, M001/S04
-- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Crash-safe persistence during sync (save after each creation). Runtime validation pending UAT.
+- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Crash-safe persistence during sync (save after each creation). Consumed by close to resolve slice→issue mapping (S04). Runtime validation pending UAT.
 - Notes: Clean break from predecessor GITLAB-MAP.json — new format only
 
 ### R009 — Sync surfaced as prompted step in GSD flow
@@ -111,7 +111,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: M001/S03, M001/S05
-- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. Close/import events pending S04/S05.
+- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. gsd-issues:close-complete event emitted with { milestone, sliceId, issueId, url } payload, tested in close suite (S04). Import event pending S05.
 - Notes: Cheap to add, enables future extension interop
 
 ### R011 — Slash commands (/issues sync, import, close, setup)
@@ -122,7 +122,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: M001/S03, M001/S04, M001/S05
-- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow. `import`/`close`/`status` stubbed. Runtime validation pending S04–S05.
+- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow, `close` fully implemented with arg parsing and provider delegation (S04). `import`/`status` stubbed. Runtime validation pending S05.
 - Notes: Single /issues command with subcommand routing
 
 ### R012 — LLM-callable tools with typed params
@@ -133,7 +133,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04, M001/S05
-- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). Returns structured ToolResult. 2 tool-specific tests. Import/close tools pending S04/S05.
+- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). gsd_issues_close tool registered with TypeBox schema (slice_id, optional milestone_id params) (S04). Returns structured ToolResult. Import tool pending S05.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
 
 ### R013 — npm packaging and distribution

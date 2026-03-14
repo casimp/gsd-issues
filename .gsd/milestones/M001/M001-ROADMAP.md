@@ -59,7 +59,7 @@ This milestone is complete only when all are true:
 - [x] **S03: Sync workflow** `risk:high` `depends:[S01,S02]`
   > After this: user writes a roadmap, gets prompted "Ready to create issues?", confirms, sees real issues created on GitLab/GitHub with milestone/assignee/labels/weight/epic, mapping persisted to ISSUE-MAP.json.
 
-- [ ] **S04: Auto-close on slice completion** `risk:medium` `depends:[S01,S02]`
+- [x] **S04: Auto-close on slice completion** `risk:medium` `depends:[S01,S02]`
   > After this: user completes a slice (summary file written), the mapped issue is auto-closed with correct done labels on GitLab and close reason on GitHub. Events emitted on pi.events bus.
 
 - [ ] **S05: Import workflow** `risk:low` `depends:[S01,S02]`
