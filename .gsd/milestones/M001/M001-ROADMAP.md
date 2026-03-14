@@ -62,7 +62,7 @@ This milestone is complete only when all are true:
 - [x] **S04: Auto-close on slice completion** `risk:medium` `depends:[S01,S02]`
   > After this: user completes a slice (summary file written), the mapped issue is auto-closed with correct done labels on GitLab and close reason on GitHub. Events emitted on pi.events bus.
 
-- [ ] **S05: Import workflow** `risk:low` `depends:[S01,S02]`
+- [x] **S05: Import workflow** `risk:low` `depends:[S01,S02]`
   > After this: user runs /issues import, issues are fetched from GitLab/GitHub filtered by milestone/label, formatted as structured markdown, and handed to the LLM for planning interpretation.
 
 - [ ] **S06: npm packaging and distribution** `risk:low` `depends:[S01,S02,S03,S04,S05]`

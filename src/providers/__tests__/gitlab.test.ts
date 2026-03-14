@@ -169,6 +169,10 @@ describe("GitLabProvider", () => {
           state: "opened",
           web_url: "https://gitlab.com/g/p/-/issues/1",
           labels: ["bug"],
+          weight: 3,
+          description: "Bug details here",
+          milestone: { title: "v1.0" },
+          assignees: [{ username: "alice" }],
         },
         {
           iid: 2,
@@ -176,6 +180,10 @@ describe("GitLabProvider", () => {
           state: "closed",
           web_url: "https://gitlab.com/g/p/-/issues/2",
           labels: [],
+          weight: null,
+          description: null,
+          milestone: null,
+          assignees: [],
         },
       ]);
       const exec = vi.fn<ExecFn>().mockResolvedValueOnce(ok(glabOutput));
@@ -190,8 +198,22 @@ describe("GitLabProvider", () => {
         state: "open",
         url: "https://gitlab.com/g/p/-/issues/1",
         labels: ["bug"],
+        weight: 3,
+        milestone: "v1.0",
+        assignee: "alice",
+        description: "Bug details here",
       });
-      expect(issues[1].state).toBe("closed");
+      expect(issues[1]).toEqual({
+        id: 2,
+        title: "Second issue",
+        state: "closed",
+        url: "https://gitlab.com/g/p/-/issues/2",
+        labels: [],
+        weight: undefined,
+        milestone: undefined,
+        assignee: undefined,
+        description: undefined,
+      });
     });
 
     it("passes filters as CLI args", async () => {

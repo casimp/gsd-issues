@@ -56,7 +56,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S05
 - Supporting slices: none
-- Validation: unmapped
+- Validation: contract — importIssues() formats issues from both providers with weight sorting, description truncation (500 chars), empty list handling, and gsd-issues:import-complete event. /issues import command with --milestone/--labels flag parsing. gsd_issues_import tool with TypeBox schema. 30 tests (17 import + 13 command). Both providers populate extended Issue fields (weight, milestone, assignee, description).
 - Notes: Read-only operation. Extension fetches/formats, LLM interprets.
 
 ### R006 — GitLab extras (epics, weight, labels, reorg)
@@ -111,7 +111,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: M001/S03, M001/S05
-- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. gsd-issues:close-complete event emitted with { milestone, sliceId, issueId, url } payload, tested in close suite (S04). Import event pending S05.
+- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. gsd-issues:close-complete event emitted with { milestone, sliceId, issueId, url } payload, tested in close suite (S04). gsd-issues:import-complete event emitted with { issueCount } payload, tested in import suite (S05). All three workflow events wired.
 - Notes: Cheap to add, enables future extension interop
 
 ### R011 — Slash commands (/issues sync, import, close, setup)
@@ -122,7 +122,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: M001/S03, M001/S04, M001/S05
-- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow, `close` fully implemented with arg parsing and provider delegation (S04). `import`/`status` stubbed. Runtime validation pending S05.
+- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow, `close` fully implemented with arg parsing and provider delegation (S04), `import` fully implemented with --milestone/--labels flag parsing (S05). `status` stubbed. Runtime validation pending UAT.
 - Notes: Single /issues command with subcommand routing
 
 ### R012 — LLM-callable tools with typed params
@@ -133,7 +133,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04, M001/S05
-- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). gsd_issues_close tool registered with TypeBox schema (slice_id, optional milestone_id params) (S04). Returns structured ToolResult. Import tool pending S05.
+- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). gsd_issues_close tool registered with TypeBox schema (slice_id, optional milestone_id params) (S04). gsd_issues_import tool registered with TypeBox schema (optional milestone, labels, state, assignee params) (S05). All three workflow tools return structured ToolResult.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
 
 ### R013 — npm packaging and distribution

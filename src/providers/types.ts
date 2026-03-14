@@ -44,6 +44,14 @@ export interface Issue {
   url: string;
   /** Labels attached to the issue */
   labels: string[];
+  /** Issue weight (GitLab only) */
+  weight?: number;
+  /** Milestone title */
+  milestone?: string;
+  /** Primary assignee username (first assignee) */
+  assignee?: string;
+  /** Issue body/description */
+  description?: string;
 }
 
 export interface CreateIssueOpts {

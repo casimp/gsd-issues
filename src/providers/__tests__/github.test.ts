@@ -188,7 +188,7 @@ describe("GitHubProvider", () => {
       const args = exec.mock.calls[0][1];
       expect(args).toContain("--json");
       expect(args[args.indexOf("--json") + 1]).toBe(
-        "number,title,state,url,labels,milestone,assignees",
+        "number,title,state,url,labels,milestone,assignees,body",
       );
     });
 
@@ -202,6 +202,7 @@ describe("GitHubProvider", () => {
           labels: [{ name: "bug" }],
           milestone: { title: "v1" },
           assignees: [{ login: "dev" }],
+          body: "This is the bug description",
         },
         {
           number: 11,
@@ -211,6 +212,7 @@ describe("GitHubProvider", () => {
           labels: [],
           milestone: null,
           assignees: [],
+          body: null,
         },
       ]);
       const exec = vi.fn<ExecFn>().mockResolvedValueOnce(ok(ghOutput));
@@ -225,9 +227,20 @@ describe("GitHubProvider", () => {
         state: "open",
         url: "https://github.com/o/r/issues/10",
         labels: ["bug"],
+        milestone: "v1",
+        assignee: "dev",
+        description: "This is the bug description",
       });
-      expect(issues[1].state).toBe("closed");
-      expect(issues[1].labels).toEqual([]);
+      expect(issues[1]).toEqual({
+        id: 11,
+        title: "Closed issue",
+        state: "closed",
+        url: "https://github.com/o/r/issues/11",
+        labels: [],
+        milestone: undefined,
+        assignee: undefined,
+        description: undefined,
+      });
     });
 
     it("passes filters as CLI args", async () => {

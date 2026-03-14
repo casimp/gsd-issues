@@ -12,9 +12,9 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-S01 (provider abstraction), S02 (config and setup), S03 (sync workflow), and S04 (auto-close) complete. The extension now covers two of three core workflows: sync creates remote issues from roadmap slices, and close auto-closes mapped issues when a slice summary is written. The tool_result lifecycle hook watches for S##-SUMMARY.md writes and fires closeSliceIssue() with config-driven provider options (GitLab done label, GitHub close reason). Both `/issues close` command and `gsd_issues_close` LLM tool are wired up. ExtensionAPI has `registerTool()`, `exec()`, `events`, and `on()`. 158 mock-based tests passing across 11 test files, typecheck clean.
+S01 (provider abstraction), S02 (config and setup), S03 (sync workflow), S04 (auto-close), and S05 (import) complete. All three core workflows are implemented: sync creates remote issues from roadmap slices, close auto-closes mapped issues when a slice summary is written, and import fetches remote issues and formats them as structured markdown for LLM planning input. The Issue type now includes optional weight, milestone, assignee, and description fields populated by both providers. 188 mock-based tests passing across 13 test files, typecheck clean.
 
-Next: S05 (import workflow) — fetch remote issues and format as markdown for LLM planning input.
+Next: S06 (npm packaging and distribution) — the final slice to make the extension installable via npm.
 
 ## Architecture / Key Patterns
 

@@ -25,6 +25,10 @@ interface GlabListItem {
   state: string;
   web_url: string;
   labels: string[];
+  weight: number | null;
+  description: string | null;
+  milestone: { title: string } | null;
+  assignees: Array<{ username: string }>;
 }
 
 export class GitLabProvider implements IssueProvider {
@@ -133,6 +137,10 @@ export class GitLabProvider implements IssueProvider {
       state: (item.state === "opened" ? "open" : "closed") as "open" | "closed",
       url: item.web_url,
       labels: item.labels ?? [],
+      weight: item.weight ?? undefined,
+      milestone: item.milestone?.title,
+      assignee: item.assignees?.[0]?.username,
+      description: item.description ?? undefined,
     }));
   }
 

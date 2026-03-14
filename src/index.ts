@@ -21,6 +21,7 @@ import { loadConfig, type Config } from "./lib/config.js";
 import { readGSDState, findRoadmapPath, parseRoadmapSlices } from "./lib/state.js";
 import { syncSlicesToIssues, SyncToolSchema, type SyncToolParams } from "./lib/sync.js";
 import { closeSliceIssue } from "./lib/close.js";
+import { importIssues, ImportToolSchema, type ImportToolParams } from "./lib/import.js";
 import { loadIssueMap } from "./lib/issue-map.js";
 import { GitLabProvider } from "./providers/gitlab.js";
 import { GitHubProvider } from "./providers/github.js";
@@ -229,6 +230,55 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
+  // Register the import tool for LLM callers
+  pi.registerTool("gsd_issues_import", {
+    description:
+      "Import issues from GitLab/GitHub as structured markdown. Fetches open issues filtered by milestone, labels, state, and assignee. Returns formatted markdown with issue IDs, titles, labels, weight, milestone, assignee, and truncated descriptions.",
+    parameters: ImportToolSchema,
+    async execute(params: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
+      const typedParams = params as ImportToolParams;
+      const cwd = process.cwd();
+
+      const config = await loadConfig(cwd);
+
+      // Resolve milestone: from params, config, or GSD state
+      let milestoneId = typedParams.milestone ?? config.milestone;
+      if (!milestoneId) {
+        const state = await readGSDState(cwd);
+        if (state) {
+          milestoneId = state.milestoneId;
+        }
+      }
+
+      // Build filter
+      const filter: { state?: "open" | "closed" | "all"; milestone?: string; labels?: string[]; assignee?: string } = {
+        state: typedParams.state ?? "open",
+      };
+      if (milestoneId) {
+        filter.milestone = milestoneId;
+      }
+      if (typedParams.labels && typedParams.labels.length > 0) {
+        filter.labels = typedParams.labels;
+      }
+      if (typedParams.assignee) {
+        filter.assignee = typedParams.assignee;
+      }
+
+      // Fetch issues and format
+      const provider = createProvider(config, pi.exec);
+      const issues = await provider.listIssues(filter);
+      const result = importIssues({
+        issues,
+        emit: pi.events.emit.bind(pi.events),
+      });
+
+      return {
+        content: [{ type: "text", text: result.markdown }],
+        details: result,
+      };
+    },
+  });
+
   pi.registerCommand("issues", {
     description:
       "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|status",
@@ -277,7 +327,12 @@ export default function (pi: ExtensionAPI): void {
           return;
         }
 
-        case "import":
+        case "import": {
+          const { handleImport } = await import("./commands/import.js");
+          await handleImport(args, ctx, pi);
+          return;
+        }
+
         case "status":
           ctx.ui.notify(
             `/issues ${subcommand} is not yet implemented.`,

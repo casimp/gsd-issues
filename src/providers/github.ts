@@ -27,6 +27,7 @@ interface GhListItem {
   labels: Array<{ name: string }>;
   milestone: { title: string } | null;
   assignees: Array<{ login: string }>;
+  body: string | null;
 }
 
 export class GitHubProvider implements IssueProvider {
@@ -105,7 +106,7 @@ export class GitHubProvider implements IssueProvider {
       "issue",
       "list",
       "--json",
-      "number,title,state,url,labels,milestone,assignees",
+      "number,title,state,url,labels,milestone,assignees,body",
     ];
 
     if (filter?.state && filter.state !== "all") {
@@ -131,6 +132,9 @@ export class GitHubProvider implements IssueProvider {
       state: (item.state === "OPEN" ? "open" : "closed") as "open" | "closed",
       url: item.url,
       labels: (item.labels ?? []).map((l) => l.name),
+      milestone: item.milestone?.title,
+      assignee: item.assignees?.[0]?.login,
+      description: item.body ?? undefined,
     }));
   }
 
