@@ -12,9 +12,7 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-M001 (Issue Tracker Integration) is complete — all six slices delivered, 188 contract tests passing, typecheck clean. The extension is fully implemented with three core workflows (sync, close, import) working on both GitLab and GitHub through provider abstraction. Lifecycle hook auto-closes issues on slice completion. Slash commands, LLM-callable tools, and event bus emissions all wired. Package is npm-distributable with pi manifest and README.
-
-All verification is contract-level (mock-based). UAT against real GitLab and GitHub repositories has not been performed.
+M001 (Issue Tracker Integration) complete — built the foundation: provider abstraction, config system, CLI wrappers, sync/close/import. However, M001 operates at the slice level which doesn't match the actual workflow. M002 (Milestone-Level Issue Tracking and PR Workflow) is in planning — reframing around milestones as the unit of external work with PR/MR creation on milestone completion.
 
 ## Architecture / Key Patterns
 
@@ -34,4 +32,5 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 ## Milestone Sequence
 
-- [x] M001: Issue tracker integration — Sync, close, and import workflows for GitLab and GitHub with npm distribution
+- [x] M001: Issue tracker integration — Provider abstraction, config, CLI wrappers (foundation)
+- [ ] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge
