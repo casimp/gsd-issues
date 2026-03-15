@@ -34,8 +34,8 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: contract (M001, slice-level) — M001 proved the sync pipeline mechanics (create, skip mapped, crash-safe persistence, dry-run). Needs rework to operate at milestone level instead of slice level in M002.
-- Notes: Must support re-running safely (skip already-mapped milestones). M001 implemented per-slice sync — M002 will rework to per-milestone.
+- Validation: contract — `syncMilestoneToIssue()` creates one issue per milestone with title from ROADMAP.md, description from CONTEXT.md + slice listing. Skips already-mapped milestones, crash-safe persistence, dry-run, epic assignment (20 tests). Commands and tools updated for milestone-level sync. Runtime validation pending UAT.
+- Notes: Must support re-running safely (skip already-mapped milestones). M001 implemented per-slice sync — M002 reworked to per-milestone.
 
 ### R004 — Close: issue closes on milestone PR merge
 - Class: primary-user-loop
@@ -45,8 +45,8 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: none
-- Validation: contract (M001, slice-level) — M001 proved close orchestration and provider closeIssue() calls. Needs rework: close via PR merge (platform-handled) replaces tool_result hook.
-- Notes: M001 implemented auto-close on slice summary write. M002 replaces this with close-on-merge via `Closes #N` in PR body.
+- Validation: contract — Close via PR merge: `createMilestonePR()` includes `Closes #N` in PR body (platform handles auto-close on merge). Manual fallback: `closeMilestoneIssue()` calls provider.closeIssue() by milestoneId lookup. tool_result hook fully removed (D032). 8 close tests, 25 PR tests. Runtime validation pending UAT.
+- Notes: M001 implemented auto-close on slice summary write. M002 replaced this with close-on-merge via `Closes #N` in PR body. Manual `/issues close` remains as fallback.
 
 ### R005 — Import: fetch issues for LLM planning
 - Class: core-capability
@@ -100,7 +100,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: contract (M001, slice-level) — Confirmation flow implemented. Needs reframing for milestone-level issue creation in M002.
+- Validation: contract — Confirmation flow implemented for milestone-level sync. `/issues sync` shows milestone preview and confirms before creating. Tool mode (gsd_issues_sync) skips confirmation per D022.
 - Notes: Not manual-only, not auto — prompted step in the workflow
 
 ### R010 — Event bus emissions for composability
@@ -111,7 +111,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: M001/S03, M001/S05
-- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. gsd-issues:close-complete event emitted with { milestone, sliceId, issueId, url } payload, tested in close suite (S04). gsd-issues:import-complete event emitted with { issueCount } payload, tested in import suite (S05). All three workflow events wired.
+- Validation: contract — gsd-issues:sync-complete event emitted with { milestone, created, skipped, errors } payload, tested in sync suite. gsd-issues:close-complete event emitted with { milestone, issueId, url } payload (no sliceId), tested in close suite. gsd-issues:pr-complete event emitted with { milestoneId, prUrl, prNumber } payload, tested in PR suite. gsd-issues:import-complete event emitted with { issueCount } payload, tested in import suite. All four workflow events wired.
 - Notes: Cheap to add, enables future extension interop
 
 ### R011 — Slash commands (/issues sync, import, close, setup)
@@ -122,7 +122,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S02
 - Supporting slices: M001/S03, M001/S04, M001/S05
-- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` fully implemented with preview/confirm flow, `close` fully implemented with arg parsing and provider delegation (S04), `import` fully implemented with --milestone/--labels flag parsing (S05). `status` stubbed. Runtime validation pending UAT.
+- Validation: contract — /issues command registered with getArgumentCompletions, subcommand routing via switch/case. `setup` fully implemented, `sync` rewritten for milestone-level with preview/confirm flow, `close` rewritten for milestone ID arg parsing and provider delegation, `import` fully implemented with --milestone/--labels flag parsing, `pr` fully implemented with branch preview and confirmation. `status` stubbed. Runtime validation pending UAT.
 - Notes: Single /issues command with subcommand routing
 
 ### R012 — LLM-callable tools with typed params
@@ -133,30 +133,8 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04, M001/S05
-- Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). gsd_issues_close tool registered with TypeBox schema (slice_id, optional milestone_id params) (S04). gsd_issues_import tool registered with TypeBox schema (optional milestone, labels, state, assignee params) (S05). All three workflow tools return structured ToolResult.
+- Validation: contract — gsd_issues_sync tool registered with milestone_id param. gsd_issues_close tool registered with milestone_id param (slice_id removed). gsd_issues_import tool registered with optional milestone, labels, state, assignee params. gsd_issues_pr tool registered with milestone_id, target_branch, dry_run params. All four workflow tools return structured ToolResult.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
-
-### R014 — PR/MR creation on milestone completion
-- Class: primary-user-loop
-- Status: active
-- Description: Create a PR/MR from the milestone branch to main when a milestone completes, with `Closes #N` linking to the milestone's issue so close happens on merge
-- Why it matters: Review is a fundamental part of team workflows — the milestone is the reviewable unit, one PR per milestone
-- Source: user
-- Primary owning slice: M002/S02
-- Supporting slices: M002/S01
-- Validation: contract (partial, M002/S01) — `createPR()` implemented on both providers with mock-exec tests proving CLI arg construction and URL parsing for `gh pr create` and `glab mr create`. `Closes #N` body injection tested. Full PR creation pipeline (branch push + PR command) deferred to S02.
-- Notes: Uses `gh pr create` / `glab mr create`. GSD already supports integration branches — if started from a milestone branch, slices merge into it, not main. PR targets main.
-
-### R015 — Milestone-level issue tracking
-- Class: core-capability
-- Status: active
-- Description: Sync creates one issue per milestone (not per slice). ISSUE-MAP maps milestone → issue. Close fires on milestone completion, not slice completion.
-- Why it matters: The milestone is the meaningful external unit — it has a clear outcome, maps to one branch and one PR. Slices are internal implementation detail.
-- Source: user
-- Primary owning slice: M002/S02
-- Supporting slices: M002/S01
-- Validation: contract (partial, M002/S01) — `IssueMapEntry.localId` convention established for milestone IDs (D029), `readIntegrationBranch()` reads META.json with full resilience (9 tests). Sync/close orchestration rebuild deferred to S02.
-- Notes: Replaces M001's per-slice sync model. The underlying provider abstraction and CLI wrappers remain valid. Sync/close orchestration rebuilt around milestones.
 
 ### R016 — Reverse flow: import issues and re-scope into milestones
 - Class: core-capability
@@ -193,7 +171,27 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 ## Validated
 
-(none yet)
+### R014 — PR/MR creation on milestone completion
+- Class: primary-user-loop
+- Status: validated
+- Description: Create a PR/MR from the milestone branch to main when a milestone completes, with `Closes #N` linking to the milestone's issue so close happens on merge
+- Why it matters: Review is a fundamental part of team workflows — the milestone is the reviewable unit, one PR per milestone
+- Source: user
+- Primary owning slice: M002/S02
+- Supporting slices: M002/S01
+- Validation: contract — `createPR()` on both providers (S01, mock-exec). `createMilestonePR()` pipeline: pushes branch, calls provider.createPR() with `Closes #N` from ISSUE-MAP, handles missing integration branch/same-branch/push failure (S02, 14 lib + 11 command tests). `handlePr()` command with interactive preview and confirmation. `gsd_issues_pr` tool registered. Runtime validation pending UAT.
+- Notes: Uses `gh pr create` / `glab mr create`. GSD already supports integration branches — if started from a milestone branch, slices merge into it, not main. PR targets main.
+
+### R015 — Milestone-level issue tracking
+- Class: core-capability
+- Status: validated
+- Description: Sync creates one issue per milestone (not per slice). ISSUE-MAP maps milestone → issue. Close fires on milestone completion, not slice completion.
+- Why it matters: The milestone is the meaningful external unit — it has a clear outcome, maps to one branch and one PR. Slices are internal implementation detail.
+- Source: user
+- Primary owning slice: M002/S02
+- Supporting slices: M002/S01
+- Validation: contract — `syncMilestoneToIssue()` creates one issue per milestone with CONTEXT.md + ROADMAP.md description, milestoneId as localId, crash-safe persistence, dry-run, epic assignment (20 sync tests). `closeMilestoneIssue()` uses milestoneId for map lookup (8 close tests). ISSUE-MAP entries keyed by milestone ID (D029). Commands and tools operate at milestone level. 235 tests total. Runtime validation pending UAT.
+- Notes: Replaces M001's per-slice sync model. The underlying provider abstraction and CLI wrappers remain valid. Sync/close orchestration rebuilt around milestones.
 
 ## Deferred
 
@@ -238,19 +236,19 @@ This file is the explicit capability and coverage contract for gsd-issues.
 |---|---|---|---|---|---|
 | R001 | core-capability | active | M001/S01 | none | contract |
 | R002 | core-capability | active | M001/S02 | none | unmapped |
-| R003 | primary-user-loop | active | M001/S03 | none | contract (slice-level, needs rework) |
-| R004 | primary-user-loop | active | M001/S04 | none | contract (slice-level, needs rework) |
+| R003 | primary-user-loop | active | M001/S03 | none | contract (milestone-level) |
+| R004 | primary-user-loop | active | M001/S04 | none | contract (milestone-level, PR-driven) |
 | R005 | core-capability | active | M001/S05 | none | unmapped |
-| R006 | integration | active | M001/S03 | M001/S04 | contract (needs milestone reframing) |
-| R007 | integration | active | M001/S03 | M001/S04 | contract (needs milestone reframing) |
-| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | contract (needs milestone reframing) |
-| R009 | primary-user-loop | active | M001/S03 | none | contract (needs milestone reframing) |
-| R010 | integration | active | M001/S04 | M001/S03, M001/S05 | unmapped |
-| R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |
-| R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | unmapped |
+| R006 | integration | active | M001/S03 | M001/S04 | contract (milestone-level) |
+| R007 | integration | active | M001/S03 | M001/S04 | contract (milestone-level) |
+| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | contract (milestone-level) |
+| R009 | primary-user-loop | active | M001/S03 | none | contract (milestone-level) |
+| R010 | integration | active | M001/S04 | M001/S03, M001/S05 | contract |
+| R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | contract |
+| R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | contract |
 | R013 | launchability | active | M001/S06 | none | contract |
-| R014 | primary-user-loop | active | M002/S02 | M002/S01 | contract (partial, M002/S01) |
-| R015 | core-capability | active | M002/S02 | M002/S01 | contract (partial, M002/S01) |
+| R014 | primary-user-loop | validated | M002/S02 | M002/S01 | contract |
+| R015 | core-capability | validated | M002/S02 | M002/S01 | contract |
 | R016 | core-capability | active | none | none | unmapped |
 | R017 | differentiator | deferred | none | none | unmapped |
 | R020 | differentiator | deferred | none | none | unmapped |
@@ -259,7 +257,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 ## Coverage Summary
 
-- Active requirements: 16
-- Mapped to slices: 15
-- Validated: 0
+- Active requirements: 14
+- Mapped to slices: 13
+- Validated: 2
 - Unmapped active requirements: 1

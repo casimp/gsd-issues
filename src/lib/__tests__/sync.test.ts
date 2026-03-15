@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type {
@@ -11,10 +11,9 @@ import type {
   ExecResult,
 } from "../../providers/types.js";
 import type { Config } from "../config.js";
-import type { RoadmapSlice } from "../state.js";
 import { saveIssueMap, loadIssueMap } from "../issue-map.js";
 import {
-  syncSlicesToIssues,
+  syncMilestoneToIssue,
   assignToEpic,
   SyncToolSchema,
   type SyncOptions,
@@ -22,17 +21,6 @@ import {
 } from "../sync.js";
 
 // ── Helpers ──
-
-function makeSlice(overrides: Partial<RoadmapSlice> = {}): RoadmapSlice {
-  return {
-    id: "S01",
-    title: "Provider abstraction",
-    risk: "medium",
-    done: false,
-    description: "providers work end-to-end.",
-    ...overrides,
-  };
-}
 
 function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -85,44 +73,91 @@ function mockExec(overrides: Partial<ExecResult> = {}): ExecFn {
   }));
 }
 
+/**
+ * Set up milestone directory structure with CONTEXT.md and ROADMAP.md.
+ */
+async function setupMilestoneFiles(
+  tmpDir: string,
+  milestoneId: string,
+  opts?: { context?: string | null; roadmap?: string | null },
+): Promise<void> {
+  const dir = join(tmpDir, ".gsd", "milestones", milestoneId);
+  await mkdir(dir, { recursive: true });
+
+  if (opts?.context !== null) {
+    const contextContent = opts?.context ?? [
+      "---",
+      `milestone: ${milestoneId}`,
+      "---",
+      "",
+      `# ${milestoneId}: Test Milestone — Context`,
+      "",
+      "## Project Description",
+      "",
+      "This is the project description for the milestone.",
+      "",
+      "## Why This Milestone",
+      "",
+      "Because we need it.",
+    ].join("\n");
+    await writeFile(join(dir, `${milestoneId}-CONTEXT.md`), contextContent, "utf-8");
+  }
+
+  if (opts?.roadmap !== null) {
+    const roadmapContent = opts?.roadmap ?? [
+      `# ${milestoneId}: Test Milestone`,
+      "",
+      "## Slices",
+      "",
+      "- [ ] **S01: First slice** `risk:medium` `depends:[]`",
+      "  > After this: first slice works.",
+      "",
+      "- [ ] **S02: Second slice** `risk:high` `depends:[S01]`",
+      "  > After this: second slice works.",
+    ].join("\n");
+    await writeFile(join(dir, `${milestoneId}-ROADMAP.md`), roadmapContent, "utf-8");
+  }
+}
+
 // ── Tests ──
 
-describe("syncSlicesToIssues", () => {
+describe("syncMilestoneToIssue", () => {
   let tempDir: string;
   let mapPath: string;
 
   beforeEach(async () => {
     tempDir = await mkdtemp(join(tmpdir(), "sync-test-"));
-    mapPath = join(tempDir, "ISSUE-MAP.json");
+    mapPath = join(tempDir, ".gsd", "milestones", "M001", "ISSUE-MAP.json");
   });
 
   afterEach(async () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("creates issues for unmapped slices", async () => {
+  it("creates a single issue for the milestone", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider();
-    const slices = [makeSlice({ id: "S01" }), makeSlice({ id: "S02", title: "Config" })];
 
-    const result = await syncSlicesToIssues({
+    const result = await syncMilestoneToIssue({
       provider,
       config: makeConfig(),
-      slices,
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
-    expect(result.created).toHaveLength(2);
-    expect(result.created[0].localId).toBe("S01");
-    expect(result.created[1].localId).toBe("S02");
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].localId).toBe("M001");
     expect(result.skipped).toHaveLength(0);
     expect(result.errors).toHaveLength(0);
-    expect(provider.createIssue).toHaveBeenCalledTimes(2);
+    expect(provider.createIssue).toHaveBeenCalledTimes(1);
   });
 
-  it("skips already-mapped slices", async () => {
+  it("skips if milestone already mapped", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const existingEntry: IssueMapEntry = {
-      localId: "S01",
+      localId: "M001",
       issueId: 50,
       provider: "gitlab",
       url: "https://gitlab.com/group/project/-/issues/50",
@@ -131,104 +166,175 @@ describe("syncSlicesToIssues", () => {
     await saveIssueMap(mapPath, [existingEntry]);
 
     const provider = mockProvider();
-    const slices = [makeSlice({ id: "S01" }), makeSlice({ id: "S02", title: "Config" })];
-
-    const result = await syncSlicesToIssues({
+    const result = await syncMilestoneToIssue({
       provider,
       config: makeConfig(),
-      slices,
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
-    expect(result.created).toHaveLength(1);
-    expect(result.created[0].localId).toBe("S02");
-    expect(result.skipped).toEqual(["S01"]);
-    expect(provider.createIssue).toHaveBeenCalledTimes(1);
+    expect(result.created).toHaveLength(0);
+    expect(result.skipped).toEqual(["M001"]);
+    expect(provider.createIssue).not.toHaveBeenCalled();
   });
 
-  it("saves map after each creation, not in batch", async () => {
-    let saveCount = 0;
+  it("persists map immediately after creation (crash-safe)", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider(
       vi.fn(async (opts: CreateIssueOpts) => {
-        // After first issue creation, map should already have been saved
-        if (saveCount > 0) {
-          const mapOnDisk = await loadIssueMap(mapPath);
-          expect(mapOnDisk).toHaveLength(saveCount);
-        }
-        const issue = makeIssue(100 + saveCount, opts.title);
-        saveCount++;
-        return issue;
+        // Map should not exist yet
+        const mapOnDisk = await loadIssueMap(mapPath);
+        expect(mapOnDisk).toHaveLength(0);
+        return makeIssue(100, opts.title);
       }),
     );
 
-    const slices = [
-      makeSlice({ id: "S01" }),
-      makeSlice({ id: "S02", title: "Config" }),
-      makeSlice({ id: "S03", title: "Sync" }),
-    ];
-
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config: makeConfig(),
-      slices,
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
-    // After all done, map on disk should have all 3
+    // After sync, map on disk should have the entry
     const finalMap = await loadIssueMap(mapPath);
-    expect(finalMap).toHaveLength(3);
+    expect(finalMap).toHaveLength(1);
+    expect(finalMap[0].localId).toBe("M001");
   });
 
-  it("builds correct CreateIssueOpts with config values", async () => {
-    const provider = mockProvider();
-    const config = makeConfig({
-      assignee: "bob",
-      labels: ["feature", "auto"],
-    });
-
-    await syncSlicesToIssues({
-      provider,
-      config,
-      slices: [makeSlice({ id: "S01", title: "My Slice", risk: "high", description: "demo line" })],
-      mapPath,
-      exec: mockExec(),
-    });
-
-    expect(provider.createIssue).toHaveBeenCalledWith({
-      title: "My Slice",
-      description: "demo line\n\n[gsd:M001/S01]",
-      milestone: "M001",
-      assignee: "bob",
-      labels: ["feature", "auto"],
-      weight: 3, // fibonacci high=3
-    });
-  });
-
-  it("includes description with demo line and GSD metadata tag", async () => {
+  it("builds description from CONTEXT.md and ROADMAP.md", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider();
 
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config: makeConfig(),
-      slices: [makeSlice({ id: "S02", description: "issues are created from roadmap slices." })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
     const call = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls[0][0] as CreateIssueOpts;
-    expect(call.description).toContain("issues are created from roadmap slices.");
-    expect(call.description).toContain("[gsd:M001/S02]");
+    expect(call.title).toBe("M001: Test Milestone");
+    expect(call.description).toContain("## Project Description");
+    expect(call.description).toContain("This is the project description");
+    expect(call.description).toContain("## Slices");
+    expect(call.description).toContain("S01: First slice");
+    expect(call.description).toContain("S02: Second slice");
+    expect(call.description).toContain("[gsd:M001]");
+  });
+
+  it("handles missing CONTEXT.md gracefully (title-only description)", async () => {
+    await setupMilestoneFiles(tempDir, "M001", { context: null });
+    const provider = mockProvider();
+
+    const result = await syncMilestoneToIssue({
+      provider,
+      config: makeConfig(),
+      milestoneId: "M001",
+      cwd: tempDir,
+      mapPath,
+      exec: mockExec(),
+    });
+
+    expect(result.created).toHaveLength(1);
+    const call = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls[0][0] as CreateIssueOpts;
+    // Should still have title from roadmap
+    expect(call.title).toBe("M001: Test Milestone");
+    // Description should still have slice listing and metadata tag
+    expect(call.description).toContain("## Slices");
+    expect(call.description).toContain("[gsd:M001]");
+    // Should NOT have CONTEXT.md body
+    expect(call.description).not.toContain("Project Description");
+  });
+
+  it("dryRun returns preview without creating issues", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
+    const provider = mockProvider();
+
+    const result = await syncMilestoneToIssue({
+      provider,
+      config: makeConfig(),
+      milestoneId: "M001",
+      cwd: tempDir,
+      mapPath,
+      exec: mockExec(),
+      dryRun: true,
+    });
+
+    expect(result.created).toHaveLength(1);
+    expect(result.created[0].localId).toBe("M001");
+    expect(result.created[0].issueId).toBe(0);
+    expect(result.created[0].url).toBe("(dry-run)");
+    expect(provider.createIssue).not.toHaveBeenCalled();
+
+    // Map file should not exist
+    const mapOnDisk = await loadIssueMap(mapPath);
+    expect(mapOnDisk).toEqual([]);
+  });
+
+  it("emits sync-complete event with milestone-scoped payload", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
+    const emitFn = vi.fn();
+
+    await syncMilestoneToIssue({
+      provider: mockProvider(),
+      config: makeConfig(),
+      milestoneId: "M001",
+      cwd: tempDir,
+      mapPath,
+      exec: mockExec(),
+      emit: emitFn,
+    });
+
+    expect(emitFn).toHaveBeenCalledWith("gsd-issues:sync-complete", {
+      milestone: "M001",
+      created: 1,
+      skipped: 0,
+      errors: 0,
+    });
+  });
+
+  it("emits sync-complete with skipped when already mapped", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
+    await saveIssueMap(mapPath, [{
+      localId: "M001",
+      issueId: 50,
+      provider: "gitlab",
+      url: "https://gitlab.com/group/project/-/issues/50",
+      createdAt: "2026-03-14T00:00:00Z",
+    }]);
+
+    const emitFn = vi.fn();
+    await syncMilestoneToIssue({
+      provider: mockProvider(),
+      config: makeConfig(),
+      milestoneId: "M001",
+      cwd: tempDir,
+      mapPath,
+      exec: mockExec(),
+      emit: emitFn,
+    });
+
+    expect(emitFn).toHaveBeenCalledWith("gsd-issues:sync-complete", {
+      milestone: "M001",
+      created: 0,
+      skipped: 1,
+      errors: 0,
+    });
   });
 
   it("handles GitLab epic assignment on success", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const exec = vi.fn(async (cmd: string, args: string[]) => {
-      // Group path lookup
       if (args.includes("--jq")) {
         return { stdout: "my-group/sub\n", stderr: "", code: 0, killed: false };
       }
-      // Epic assignment
       return { stdout: '{"id": 1}', stderr: "", code: 0, killed: false };
     });
 
@@ -242,25 +348,24 @@ describe("syncSlicesToIssues", () => {
     });
 
     const provider = mockProvider();
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config,
-      slices: [makeSlice({ id: "S01" })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec,
     });
 
-    // Should have called exec for epic assignment
     expect(exec).toHaveBeenCalledWith("glab", expect.arrayContaining(["api"]));
   });
 
   it("handles epic assignment failure gracefully", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const exec = vi.fn(async (cmd: string, args: string[]) => {
-      // Group path lookup succeeds
       if (args.includes("--jq")) {
         return { stdout: "my-group\n", stderr: "", code: 0, killed: false };
       }
-      // Epic assignment fails
       return { stdout: "", stderr: "403 Forbidden", code: 1, killed: false };
     });
 
@@ -274,10 +379,11 @@ describe("syncSlicesToIssues", () => {
       },
     });
 
-    const result = await syncSlicesToIssues({
+    const result = await syncMilestoneToIssue({
       provider: mockProvider(),
       config,
-      slices: [makeSlice({ id: "S01" })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec,
       emit: emitFn,
@@ -286,42 +392,15 @@ describe("syncSlicesToIssues", () => {
     // Issue should still be created despite epic failure
     expect(result.created).toHaveLength(1);
     expect(result.errors).toHaveLength(0);
-    // Epic warning should have been emitted
+    // Epic warning should have been emitted with milestoneId
     expect(emitFn).toHaveBeenCalledWith(
       "gsd-issues:epic-warning",
-      expect.objectContaining({ sliceId: "S01" }),
+      expect.objectContaining({ milestoneId: "M001" }),
     );
   });
 
-  it("emits sync-complete event with correct payload", async () => {
-    const emitFn = vi.fn();
-    const existingEntry: IssueMapEntry = {
-      localId: "S01",
-      issueId: 50,
-      provider: "gitlab",
-      url: "https://gitlab.com/group/project/-/issues/50",
-      createdAt: "2026-03-14T00:00:00Z",
-    };
-    await saveIssueMap(mapPath, [existingEntry]);
-
-    await syncSlicesToIssues({
-      provider: mockProvider(),
-      config: makeConfig(),
-      slices: [makeSlice({ id: "S01" }), makeSlice({ id: "S02", title: "New" })],
-      mapPath,
-      exec: mockExec(),
-      emit: emitFn,
-    });
-
-    expect(emitFn).toHaveBeenCalledWith("gsd-issues:sync-complete", {
-      milestone: "M001",
-      created: 1,
-      skipped: 1,
-      errors: 0,
-    });
-  });
-
-  it("maps weight correctly for fibonacci strategy", async () => {
+  it("uses weight from highest-risk slice", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider();
     const config = makeConfig({
       gitlab: {
@@ -331,59 +410,22 @@ describe("syncSlicesToIssues", () => {
       },
     });
 
-    const slices = [
-      makeSlice({ id: "S01", risk: "low" }),
-      makeSlice({ id: "S02", risk: "medium" }),
-      makeSlice({ id: "S03", risk: "high" }),
-      makeSlice({ id: "S04", risk: "critical" }),
-    ];
-
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config,
-      slices,
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
-    const calls = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls[0][0].weight).toBe(1); // low
-    expect(calls[1][0].weight).toBe(2); // medium
-    expect(calls[2][0].weight).toBe(3); // high
-    expect(calls[3][0].weight).toBe(5); // critical
-  });
-
-  it("maps weight correctly for linear strategy", async () => {
-    const provider = mockProvider();
-    const config = makeConfig({
-      gitlab: {
-        project_path: "g/p",
-        project_id: 1,
-        weight_strategy: "linear",
-      },
-    });
-
-    const slices = [
-      makeSlice({ id: "S01", risk: "low" }),
-      makeSlice({ id: "S02", risk: "medium" }),
-      makeSlice({ id: "S03", risk: "high" }),
-    ];
-
-    await syncSlicesToIssues({
-      provider,
-      config,
-      slices,
-      mapPath,
-      exec: mockExec(),
-    });
-
-    const calls = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls[0][0].weight).toBe(1);
-    expect(calls[1][0].weight).toBe(2);
-    expect(calls[2][0].weight).toBe(3);
+    const call = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    // Default roadmap has medium and high risk slices, highest is high=3
+    expect(call.weight).toBe(3);
   });
 
   it("omits weight when strategy is none", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider();
     const config = makeConfig({
       gitlab: {
@@ -393,10 +435,11 @@ describe("syncSlicesToIssues", () => {
       },
     });
 
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config,
-      slices: [makeSlice({ id: "S01", risk: "high" })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
@@ -406,6 +449,7 @@ describe("syncSlicesToIssues", () => {
   });
 
   it("omits weight when no weight_strategy is configured", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider();
     const config = makeConfig({
       provider: "github",
@@ -413,10 +457,11 @@ describe("syncSlicesToIssues", () => {
       gitlab: undefined,
     });
 
-    await syncSlicesToIssues({
+    await syncMilestoneToIssue({
       provider,
       config,
-      slices: [makeSlice({ id: "S01" })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
@@ -425,62 +470,31 @@ describe("syncSlicesToIssues", () => {
     expect(call.weight).toBeUndefined();
   });
 
-  it("error on one slice doesn't abort others", async () => {
-    let callCount = 0;
+  it("reports error with milestoneId on provider failure", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider = mockProvider(
-      vi.fn(async (opts: CreateIssueOpts) => {
-        callCount++;
-        if (callCount === 2) {
-          throw new Error("Rate limit exceeded");
-        }
-        return makeIssue(100 + callCount, opts.title);
+      vi.fn(async () => {
+        throw new Error("Rate limit exceeded");
       }),
     );
 
-    const slices = [
-      makeSlice({ id: "S01" }),
-      makeSlice({ id: "S02", title: "Will fail" }),
-      makeSlice({ id: "S03", title: "Should still work" }),
-    ];
-
-    const result = await syncSlicesToIssues({
+    const result = await syncMilestoneToIssue({
       provider,
       config: makeConfig(),
-      slices,
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
 
-    expect(result.created).toHaveLength(2);
+    expect(result.created).toHaveLength(0);
     expect(result.errors).toHaveLength(1);
-    expect(result.errors[0].sliceId).toBe("S02");
+    expect(result.errors[0].milestoneId).toBe("M001");
     expect(result.errors[0].error).toContain("Rate limit");
-    expect(provider.createIssue).toHaveBeenCalledTimes(3);
-  });
-
-  it("dryRun returns preview without creating issues", async () => {
-    const provider = mockProvider();
-
-    const result = await syncSlicesToIssues({
-      provider,
-      config: makeConfig(),
-      slices: [makeSlice({ id: "S01" }), makeSlice({ id: "S02", title: "Config" })],
-      mapPath,
-      exec: mockExec(),
-      dryRun: true,
-    });
-
-    expect(result.created).toHaveLength(2);
-    expect(result.created[0].issueId).toBe(0);
-    expect(result.created[0].url).toBe("(dry-run)");
-    expect(provider.createIssue).not.toHaveBeenCalled();
-
-    // Map file should not exist
-    const mapOnDisk = await loadIssueMap(mapPath);
-    expect(mapOnDisk).toEqual([]);
   });
 
   it("works with GitHub provider (no epic, no weight)", async () => {
+    await setupMilestoneFiles(tempDir, "M001");
     const provider: IssueProvider = {
       name: "github",
       createIssue: vi.fn(async (opts: CreateIssueOpts) => ({
@@ -502,10 +516,11 @@ describe("syncSlicesToIssues", () => {
       gitlab: undefined,
     });
 
-    const result = await syncSlicesToIssues({
+    const result = await syncMilestoneToIssue({
       provider,
       config,
-      slices: [makeSlice({ id: "S01" })],
+      milestoneId: "M001",
+      cwd: tempDir,
       mapPath,
       exec: mockExec(),
     });
@@ -513,44 +528,6 @@ describe("syncSlicesToIssues", () => {
     expect(result.created).toHaveLength(1);
     expect(result.created[0].provider).toBe("github");
     expect(result.created[0].url).toContain("github.com");
-  });
-
-  it("handles empty slice list", async () => {
-    const emitFn = vi.fn();
-    const result = await syncSlicesToIssues({
-      provider: mockProvider(),
-      config: makeConfig(),
-      slices: [],
-      mapPath,
-      exec: mockExec(),
-      emit: emitFn,
-    });
-
-    expect(result.created).toHaveLength(0);
-    expect(result.skipped).toHaveLength(0);
-    expect(result.errors).toHaveLength(0);
-    expect(emitFn).toHaveBeenCalledWith("gsd-issues:sync-complete", {
-      milestone: "M001",
-      created: 0,
-      skipped: 0,
-      errors: 0,
-    });
-  });
-
-  it("description omits demo line when slice has no description", async () => {
-    const provider = mockProvider();
-
-    await syncSlicesToIssues({
-      provider,
-      config: makeConfig(),
-      slices: [makeSlice({ id: "S01", description: "" })],
-      mapPath,
-      exec: mockExec(),
-    });
-
-    const call = (provider.createIssue as ReturnType<typeof vi.fn>).mock.calls[0][0] as CreateIssueOpts;
-    expect(call.description).toBe("\n[gsd:M001/S01]");
-    expect(call.description).not.toContain("After this");
   });
 });
 

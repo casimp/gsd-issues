@@ -1,24 +1,24 @@
 /**
  * Sync command handler — `/issues sync`.
  *
- * Loads config, reads roadmap, previews unmapped slices,
- * asks for confirmation, then creates remote issues via the sync pipeline.
+ * Loads config, reads milestone context and roadmap,
+ * previews the milestone issue to be created,
+ * asks for confirmation, then creates the remote issue via the sync pipeline.
  *
  * Diagnostics:
- * - Preview shows unmapped slice IDs + titles before confirmation
+ * - Preview shows milestone title before confirmation
  * - Results reported via ctx.ui.notify with created/skipped/error counts
  * - Config and roadmap errors surface as ui.notify("error")
  */
 
 import type { ExtensionCommandContext, ExtensionAPI } from "../index.js";
 import { loadConfig } from "../lib/config.js";
-import { readGSDState, findRoadmapPath, parseRoadmapSlices } from "../lib/state.js";
-import { syncSlicesToIssues } from "../lib/sync.js";
+import { readGSDState, findRoadmapPath } from "../lib/state.js";
+import { syncMilestoneToIssue } from "../lib/sync.js";
 import { loadIssueMap } from "../lib/issue-map.js";
 import { GitLabProvider } from "../providers/gitlab.js";
 import { GitHubProvider } from "../providers/github.js";
 import type { IssueProvider } from "../providers/types.js";
-import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 
 /**
@@ -65,35 +65,22 @@ export async function handleSync(
     milestoneId = state.milestoneId;
   }
 
-  // Read roadmap
+  // Check if already mapped
   const roadmapPath = findRoadmapPath(cwd, milestoneId);
-  let roadmapContent: string;
-  try {
-    roadmapContent = await readFile(roadmapPath, "utf-8");
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    ctx.ui.notify(`Failed to read roadmap: ${msg}`, "error");
-    return;
-  }
-
-  const slices = parseRoadmapSlices(roadmapContent);
   const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
   const existingMap = await loadIssueMap(mapPath);
-  const mappedIds = new Set(existingMap.map((e) => e.localId));
-  const unmapped = slices.filter((s) => !mappedIds.has(s.id));
+  const alreadyMapped = existingMap.some((e) => e.localId === milestoneId);
 
-  if (unmapped.length === 0) {
-    ctx.ui.notify("All slices are already mapped to issues. Nothing to sync.", "info");
+  if (alreadyMapped) {
+    ctx.ui.notify(`Milestone ${milestoneId} is already mapped to an issue. Nothing to sync.`, "info");
     return;
   }
 
   // Show preview
-  const previewLines = unmapped.map((s) => `  ${s.id}: ${s.title}`);
-  const previewText = `Unmapped slices to create:\n${previewLines.join("\n")}`;
-  ctx.ui.notify(previewText, "info");
+  ctx.ui.notify(`Will create issue for milestone: ${milestoneId}`, "info");
 
   // Confirm
-  const confirmed = await ctx.ui.confirm(`Create ${unmapped.length} issue${unmapped.length === 1 ? "" : "s"}?`);
+  const confirmed = await ctx.ui.confirm("Create milestone issue?");
   if (!confirmed) {
     ctx.ui.notify("Sync cancelled.", "info");
     return;
@@ -101,10 +88,11 @@ export async function handleSync(
 
   // Run sync
   const provider = createProvider(config, pi.exec);
-  const result = await syncSlicesToIssues({
+  const result = await syncMilestoneToIssue({
     provider,
     config: { ...config, milestone: milestoneId },
-    slices,
+    milestoneId,
+    cwd,
     mapPath,
     exec: pi.exec,
     emit: pi.events.emit.bind(pi.events),
@@ -116,7 +104,7 @@ export async function handleSync(
   if (result.errors.length > 0) {
     lines.push(`${result.errors.length} error(s):`);
     for (const e of result.errors) {
-      lines.push(`  ${e.sliceId}: ${e.error}`);
+      lines.push(`  ${e.milestoneId}: ${e.error}`);
     }
   }
   ctx.ui.notify(lines.join("\n"), result.errors.length > 0 ? "warning" : "info");

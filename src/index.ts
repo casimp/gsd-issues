@@ -1,33 +1,32 @@
 /**
  * gsd-issues extension entry point.
  *
- * Registers the `/issues` command with subcommand routing,
- * the `gsd_issues_sync` and `gsd_issues_close` LLM-callable tools,
- * and a `tool_result` lifecycle hook that auto-closes issues on slice completion.
+ * Registers the `/issues` command with subcommand routing and
+ * the `gsd_issues_sync`, `gsd_issues_close`, and `gsd_issues_pr` LLM-callable tools.
  *
- * Subcommands: setup, sync, import, close, status.
+ * Subcommands: setup, sync, import, close, pr, status.
  *
  * Diagnostics:
  * - Tool registration logged at load time
  * - Sync results reported via ctx.ui.notify (command) or ToolResult (tool)
  * - Config/provider errors surface with actionable messages
- * - tool_result hook: never throws, catches all errors silently
  * - Close result: gsd-issues:close-complete event emitted on success
+ * - PR result: gsd-issues:pr-complete event emitted on success
  */
 
 import { Type, type Static } from "@sinclair/typebox";
 import type { TSchema } from "@sinclair/typebox";
 import { loadConfig, type Config } from "./lib/config.js";
-import { readGSDState, findRoadmapPath, parseRoadmapSlices } from "./lib/state.js";
-import { syncSlicesToIssues, SyncToolSchema, type SyncToolParams } from "./lib/sync.js";
-import { closeSliceIssue } from "./lib/close.js";
+import { readGSDState, findRoadmapPath } from "./lib/state.js";
+import { syncMilestoneToIssue, SyncToolSchema, type SyncToolParams } from "./lib/sync.js";
+import { closeMilestoneIssue } from "./lib/close.js";
+import { createMilestonePR, PrToolSchema, type PrToolParams } from "./lib/pr.js";
 import { importIssues, ImportToolSchema, type ImportToolParams } from "./lib/import.js";
 import { loadIssueMap } from "./lib/issue-map.js";
 import { GitLabProvider } from "./providers/gitlab.js";
 import { GitHubProvider } from "./providers/github.js";
 import type { ExecFn, IssueProvider } from "./providers/types.js";
-import { readFile } from "node:fs/promises";
-import { join, dirname, resolve, isAbsolute } from "node:path";
+import { join, dirname } from "node:path";
 
 // ── Minimal pi extension API types ──
 // These match the pi extension contract. When pi loads this extension,
@@ -75,20 +74,9 @@ export interface ToolDefinition {
   ): Promise<ToolResult>;
 }
 
-export interface ToolResultEvent {
-  toolName: string;
-  input: Record<string, unknown>;
-  content: unknown;
-  isError: boolean;
-}
-
 export interface ExtensionAPI {
   registerCommand(name: string, definition: CommandDefinition): void;
   registerTool(tool: ToolDefinition): void;
-  on(
-    event: "tool_result",
-    handler: (event: ToolResultEvent, ctx: ExtensionCommandContext) => void | Promise<void>,
-  ): void;
   exec: ExecFn;
   events: {
     emit(event: string, payload: unknown): void;
@@ -106,7 +94,7 @@ function createProvider(config: Config, exec: ExecFn): IssueProvider {
 
 // ── Subcommand list ──
 
-const SUBCOMMANDS = ["setup", "sync", "import", "close", "status"] as const;
+const SUBCOMMANDS = ["setup", "sync", "import", "close", "pr", "status"] as const;
 
 // ── Extension factory ──
 
@@ -116,7 +104,7 @@ export default function (pi: ExtensionAPI): void {
     name: "gsd_issues_sync",
     label: "Sync Issues",
     description:
-      "Sync GSD roadmap slices to remote issues on GitLab/GitHub. Creates issues for unmapped slices with milestone, assignee, labels, weight, and epic support.",
+      "Sync a GSD milestone to a remote issue on GitLab/GitHub. Creates one issue per milestone with title, description, labels, and provider-specific metadata.",
     parameters: SyncToolSchema,
     async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
       const typedParams = params as SyncToolParams;
@@ -136,31 +124,27 @@ export default function (pi: ExtensionAPI): void {
         milestoneId = state.milestoneId;
       }
 
-      // Read roadmap
-      const roadmapPath = typedParams.roadmap_path ?? findRoadmapPath(cwd, milestoneId);
-      const roadmapContent = await readFile(roadmapPath, "utf-8");
-      const slices = parseRoadmapSlices(roadmapContent);
-
       // Resolve map path
+      const roadmapPath = findRoadmapPath(cwd, milestoneId);
       const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
 
-      // Check for unmapped slices
+      // Check if already mapped
       const existingMap = await loadIssueMap(mapPath);
-      const mappedIds = new Set(existingMap.map((e) => e.localId));
-      const unmapped = slices.filter((s) => !mappedIds.has(s.id));
+      const alreadyMapped = existingMap.some((e) => e.localId === milestoneId);
 
-      if (unmapped.length === 0) {
+      if (alreadyMapped) {
         return {
-          content: [{ type: "text", text: "All slices are already mapped to issues. Nothing to sync." }],
+          content: [{ type: "text", text: `Milestone ${milestoneId} is already mapped to an issue. Nothing to sync.` }],
         };
       }
 
       // Run sync — no confirmation in tool mode (LLM-driven)
       const provider = createProvider(config, pi.exec);
-      const result = await syncSlicesToIssues({
+      const result = await syncMilestoneToIssue({
         provider,
         config: { ...config, milestone: milestoneId },
-        slices,
+        milestoneId,
+        cwd,
         mapPath,
         exec: pi.exec,
         emit: pi.events.emit.bind(pi.events),
@@ -174,7 +158,7 @@ export default function (pi: ExtensionAPI): void {
       if (result.errors.length > 0) {
         lines.push(`  Errors: ${result.errors.length}`);
         for (const e of result.errors) {
-          lines.push(`    ${e.sliceId}: ${e.error}`);
+          lines.push(`    ${e.milestoneId}: ${e.error}`);
         }
       }
 
@@ -187,7 +171,6 @@ export default function (pi: ExtensionAPI): void {
 
   // Register the close tool for LLM callers
   const CloseToolSchema = Type.Object({
-    slice_id: Type.String(),
     milestone_id: Type.Optional(Type.String()),
   });
   type CloseToolParams = Static<typeof CloseToolSchema>;
@@ -196,7 +179,7 @@ export default function (pi: ExtensionAPI): void {
     name: "gsd_issues_close",
     label: "Close Issue",
     description:
-      "Close the remote issue mapped to a GSD slice. Applies done label (GitLab) or close reason (GitHub) from config.",
+      "Close the remote issue mapped to a GSD milestone. Applies done label (GitLab) or close reason (GitHub) from config.",
     parameters: CloseToolSchema,
     async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
       const typedParams = params as CloseToolParams;
@@ -220,23 +203,22 @@ export default function (pi: ExtensionAPI): void {
       const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
       const provider = createProvider(config, pi.exec);
 
-      const result = await closeSliceIssue({
+      const result = await closeMilestoneIssue({
         provider,
         config,
         mapPath,
         milestoneId,
-        sliceId: typedParams.slice_id,
         emit: pi.events.emit.bind(pi.events),
       });
 
       if (!result.closed) {
         return {
-          content: [{ type: "text", text: `No issue mapping found for slice "${typedParams.slice_id}". Nothing to close.` }],
+          content: [{ type: "text", text: `No issue mapping found for milestone "${milestoneId}". Nothing to close.` }],
         };
       }
 
       return {
-        content: [{ type: "text", text: `Closed issue #${result.issueId} (${result.url}) for slice ${typedParams.slice_id}.` }],
+        content: [{ type: "text", text: `Closed issue #${result.issueId} (${result.url}) for milestone ${milestoneId}.` }],
         details: result,
       };
     },
@@ -293,9 +275,59 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
+  // Register the PR tool for LLM callers
+  pi.registerTool({
+    name: "gsd_issues_pr",
+    label: "Create PR",
+    description:
+      "Create a pull request for a GSD milestone. Pushes the integration branch and creates a PR/MR on GitLab/GitHub with optional Closes #N from the issue map.",
+    parameters: PrToolSchema,
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, _ctx: ExtensionCommandContext): Promise<ToolResult> {
+      const typedParams = params as PrToolParams;
+      const cwd = process.cwd();
+
+      const config = await loadConfig(cwd);
+
+      // Resolve milestone
+      let milestoneId = typedParams.milestone_id ?? config.milestone;
+      if (!milestoneId) {
+        const state = await readGSDState(cwd);
+        if (!state) {
+          return {
+            content: [{ type: "text", text: "Cannot determine milestone — no milestone in config or GSD state." }],
+          };
+        }
+        milestoneId = state.milestoneId;
+      }
+
+      // Resolve map path
+      const roadmapPath = findRoadmapPath(cwd, milestoneId);
+      const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+
+      // Run PR pipeline — no confirmation in tool mode (LLM-driven)
+      const provider = createProvider(config, pi.exec);
+      const result = await createMilestonePR({
+        provider,
+        config,
+        exec: pi.exec,
+        cwd,
+        milestoneId,
+        mapPath,
+        emit: pi.events.emit.bind(pi.events),
+        targetBranch: typedParams.target_branch,
+        dryRun: typedParams.dry_run,
+      });
+
+      return {
+        content: [{ type: "text", text: `PR created: ${result.url} (#${result.number}) — ${result.sourceBranch} → ${result.targetBranch}` }],
+        details: result,
+      };
+    },
+  });
+
   pi.registerCommand("issues", {
     description:
-      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|status",
+      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|status",
 
     getArgumentCompletions(prefix: string) {
       const trimmed = prefix.trim();
@@ -315,7 +347,7 @@ export default function (pi: ExtensionAPI): void {
 
       if (!subcommand) {
         ctx.ui.notify(
-          "Usage: /issues <setup|sync|import|close|status>",
+          "Usage: /issues <setup|sync|import|close|pr|status>",
           "info",
         );
         return;
@@ -347,6 +379,12 @@ export default function (pi: ExtensionAPI): void {
           return;
         }
 
+        case "pr": {
+          const { handlePr } = await import("./commands/pr.js");
+          await handlePr(args, ctx, pi);
+          return;
+        }
+
         case "status":
           ctx.ui.notify(
             `/issues ${subcommand} is not yet implemented.`,
@@ -356,65 +394,10 @@ export default function (pi: ExtensionAPI): void {
 
         default:
           ctx.ui.notify(
-            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, status.`,
+            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, pr, status.`,
             "warning",
           );
       }
     },
-  });
-
-  // ── tool_result lifecycle hook: auto-close on slice summary write ──
-  // Write tools that could produce a summary file
-  const WRITE_TOOLS = new Set(["write", "Write", "write_file", "create_file", "edit_file"]);
-  // Regex: .gsd/milestones/M###/slices/S##/S##-SUMMARY.md
-  const SUMMARY_REGEX = /\.gsd\/milestones\/(M\d+[^/]*)\/slices\/(S\d+)\/(S\d+-SUMMARY\.md)$/;
-
-  pi.on("tool_result", async (event: ToolResultEvent) => {
-    try {
-      // Skip error results
-      if (event.isError) return;
-
-      // Skip non-write tools
-      if (!WRITE_TOOLS.has(event.toolName)) return;
-
-      // Extract path from input
-      const rawPath = event.input?.path;
-      if (typeof rawPath !== "string") return;
-
-      // Resolve to absolute
-      const absPath = isAbsolute(rawPath) ? rawPath : resolve(process.cwd(), rawPath);
-
-      // Match summary pattern
-      const match = absPath.match(SUMMARY_REGEX);
-      if (!match) return;
-
-      const milestoneId = match[1];
-      const sliceId = match[2];
-
-      // Load config — silently bail if missing
-      let config: Config;
-      try {
-        config = await loadConfig(process.cwd());
-      } catch {
-        return;
-      }
-
-      // Build provider and map path
-      const provider = createProvider(config, pi.exec);
-      const roadmapPath = findRoadmapPath(process.cwd(), milestoneId);
-      const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
-
-      // Close — fire and forget, never throw
-      await closeSliceIssue({
-        provider,
-        config,
-        mapPath,
-        milestoneId,
-        sliceId,
-        emit: pi.events.emit.bind(pi.events),
-      });
-    } catch {
-      // Hook must never throw — all errors caught silently
-    }
   });
 }

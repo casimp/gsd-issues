@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
-  ToolResultEvent,
   CommandDefinition,
   ToolDefinition,
 } from "../../index.js";
@@ -41,7 +40,6 @@ function makePi(overrides: Partial<ExtensionAPI> = {}): ExtensionAPI {
   return {
     registerCommand: vi.fn(),
     registerTool: vi.fn(),
-    on: vi.fn(),
     exec: makeExec(),
     events: { emit: vi.fn() },
     ...overrides,
@@ -65,7 +63,7 @@ async function setupConfigAndMap(
   // Write STATE.md
   await writeFile(
     join(gsdDir, "STATE.md"),
-    `# GSD State\n\n## Active Milestone\nM001\n`,
+    `# GSD State\n\n**Active Milestone:** ${milestoneId} — Test\n`,
   );
 
   // Write roadmap and issue map
@@ -100,8 +98,9 @@ const GITHUB_CONFIG: Config = {
   },
 };
 
+// Entry now uses milestoneId as localId (D029)
 const DEFAULT_ENTRY: IssueMapEntry = {
-  localId: "S01",
+  localId: "M001",
   issueId: 100,
   provider: "gitlab",
   url: "https://gitlab.com/group/project/-/issues/100",
@@ -125,7 +124,7 @@ describe("handleClose command", () => {
     await rm(tmpDir, { recursive: true });
   });
 
-  it("closes issue for given slice ID", async () => {
+  it("closes issue for given milestone ID", async () => {
     const exec = makeExec();
     await setupConfigAndMap(tmpDir, GITLAB_CONFIG, [DEFAULT_ENTRY]);
 
@@ -133,7 +132,7 @@ describe("handleClose command", () => {
     const ctx = makeCtx();
 
     const { handleClose } = await import("../close.js");
-    await handleClose("close S01", ctx, pi);
+    await handleClose("close M001", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Closed issue #100"),
@@ -142,16 +141,19 @@ describe("handleClose command", () => {
     expect(exec).toHaveBeenCalled();
   });
 
-  it("reports error when slice ID is missing", async () => {
-    const pi = makePi();
+  it("uses config milestone when no arg provided", async () => {
+    const exec = makeExec();
+    await setupConfigAndMap(tmpDir, GITLAB_CONFIG, [DEFAULT_ENTRY]);
+
+    const pi = makePi({ exec });
     const ctx = makeCtx();
 
     const { handleClose } = await import("../close.js");
     await handleClose("close", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Usage"),
-      "error",
+      expect.stringContaining("Closed issue #100"),
+      "info",
     );
   });
 
@@ -161,7 +163,7 @@ describe("handleClose command", () => {
     const ctx = makeCtx();
 
     const { handleClose } = await import("../close.js");
-    await handleClose("close S01", ctx, pi);
+    await handleClose("close M001", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("No issues config found"),
@@ -177,7 +179,7 @@ describe("handleClose command", () => {
     const ctx = makeCtx();
 
     const { handleClose } = await import("../close.js");
-    await handleClose("close S99", ctx, pi);
+    await handleClose("close M099", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("No issue mapping found"),
@@ -193,7 +195,7 @@ describe("handleClose command", () => {
     const ctx = makeCtx();
 
     const { handleClose } = await import("../close.js");
-    await handleClose("close S01", ctx, pi);
+    await handleClose("close M001", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("Failed to close"),
@@ -247,7 +249,8 @@ describe("gsd_issues_close tool registration", () => {
       const toolDef = closeCall![0] as ToolDefinition;
 
       const ctx = makeCtx();
-      const result = await toolDef.execute("test-call-id", { slice_id: "S01" }, new AbortController().signal, undefined, ctx);
+      // Now uses milestone_id instead of slice_id
+      const result = await toolDef.execute("test-call-id", { milestone_id: "M001" }, new AbortController().signal, undefined, ctx);
 
       expect(result.content[0].text).toContain("Closed issue #100");
     } finally {
@@ -257,197 +260,19 @@ describe("gsd_issues_close tool registration", () => {
   });
 });
 
-// ── Hook wiring tests ──
+// ── Hook removal verification ──
 
-describe("tool_result hook", () => {
-  let tmpDir: string;
-  let origCwd: string;
-
-  beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), "hook-test-"));
-    origCwd = process.cwd();
-    process.chdir(tmpDir);
-  });
-
-  afterEach(async () => {
-    process.chdir(origCwd);
-    await rm(tmpDir, { recursive: true });
-  });
-
-  it("registers a tool_result handler on pi.on", async () => {
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn });
+describe("tool_result hook removal", () => {
+  it("extension does not register a tool_result handler (hook removed)", async () => {
+    const registerTool = vi.fn();
+    const registerCommand = vi.fn();
+    const pi = makePi({ registerTool, registerCommand });
 
     const extensionFactory = (await import("../../index.js")).default;
     extensionFactory(pi);
 
-    expect(onFn).toHaveBeenCalledWith("tool_result", expect.any(Function));
-  });
-
-  it("triggers close when summary file is written", async () => {
-    const exec = makeExec();
-    const emit = vi.fn();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec, events: { emit } });
-
-    await setupConfigAndMap(tmpDir, GITLAB_CONFIG, [DEFAULT_ENTRY]);
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    // Get the registered handler
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    // Simulate writing a summary file
-    await handler({
-      toolName: "write",
-      input: {
-        path: join(
-          tmpDir,
-          ".gsd/milestones/M001/slices/S01/S01-SUMMARY.md",
-        ),
-      },
-      content: "summary content",
-      isError: false,
-    });
-
-    // Should have called exec (to close the issue)
-    expect(exec).toHaveBeenCalled();
-    // Should have emitted close event
-    expect(emit).toHaveBeenCalledWith(
-      "gsd-issues:close-complete",
-      expect.objectContaining({
-        sliceId: "S01",
-        milestone: "M001",
-      }),
-    );
-  });
-
-  it("skips non-summary paths", async () => {
-    const exec = makeExec();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec });
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    await handler({
-      toolName: "write",
-      input: { path: ".gsd/milestones/M001/slices/S01/S01-PLAN.md" },
-      content: "plan content",
-      isError: false,
-    });
-
-    // exec should not have been called for a non-summary path
-    expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("skips error results", async () => {
-    const exec = makeExec();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec });
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    await handler({
-      toolName: "write",
-      input: {
-        path: ".gsd/milestones/M001/slices/S01/S01-SUMMARY.md",
-      },
-      content: "error content",
-      isError: true,
-    });
-
-    expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("skips non-write tools", async () => {
-    const exec = makeExec();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec });
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    await handler({
-      toolName: "read_file",
-      input: {
-        path: ".gsd/milestones/M001/slices/S01/S01-SUMMARY.md",
-      },
-      content: "content",
-      isError: false,
-    });
-
-    expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("does not throw when config is missing", async () => {
-    // No config set up — handler should catch and return silently
-    const exec = makeExec();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec });
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    // Should not throw
-    await expect(
-      handler({
-        toolName: "write",
-        input: {
-          path: join(
-            tmpDir,
-            ".gsd/milestones/M001/slices/S01/S01-SUMMARY.md",
-          ),
-        },
-        content: "content",
-        isError: false,
-      }),
-    ).resolves.toBeUndefined();
-
-    // exec should not have been called since config load failed
-    expect(exec).not.toHaveBeenCalled();
-  });
-
-  it("skips write to wrong directory structure", async () => {
-    const exec = makeExec();
-    const onFn = vi.fn();
-    const pi = makePi({ on: onFn, exec });
-
-    const extensionFactory = (await import("../../index.js")).default;
-    extensionFactory(pi);
-
-    const handler = onFn.mock.calls.find(
-      (call) => call[0] === "tool_result",
-    )![1] as (event: ToolResultEvent) => Promise<void>;
-
-    // Summary file but not in .gsd/milestones structure
-    await handler({
-      toolName: "write",
-      input: { path: "/some/other/path/S01-SUMMARY.md" },
-      content: "content",
-      isError: false,
-    });
-
-    expect(exec).not.toHaveBeenCalled();
+    // ExtensionAPI no longer has .on() — the hook is removed.
+    // Verify by checking that no 'on' property exists on the API shape.
+    expect("on" in pi).toBe(false);
   });
 });

@@ -10,7 +10,7 @@ import type {
 import { ProviderError } from "../../providers/types.js";
 import type { Config } from "../config.js";
 import { saveIssueMap } from "../issue-map.js";
-import { closeSliceIssue, type CloseOptions, type CloseResult } from "../close.js";
+import { closeMilestoneIssue, type CloseOptions, type CloseResult } from "../close.js";
 
 // ── Helpers ──
 
@@ -41,7 +41,7 @@ function makeGitHubConfig(overrides: Partial<Config> = {}): Config {
 
 function makeEntry(overrides: Partial<IssueMapEntry> = {}): IssueMapEntry {
   return {
-    localId: "S01",
+    localId: "M001",
     issueId: 100,
     provider: "gitlab",
     url: "https://gitlab.com/group/project/-/issues/100",
@@ -80,7 +80,7 @@ function mockGitHubProvider(
 
 // ── Tests ──
 
-describe("closeSliceIssue", () => {
+describe("closeMilestoneIssue", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
@@ -99,12 +99,11 @@ describe("closeSliceIssue", () => {
     const config = makeConfig();
     const emit = vi.fn();
 
-    const result = await closeSliceIssue({
+    const result = await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
       emit,
     });
 
@@ -134,12 +133,11 @@ describe("closeSliceIssue", () => {
     const provider = mockGitHubProvider();
     const config = makeGitHubConfig();
 
-    const result = await closeSliceIssue({
+    const result = await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
     });
 
     expect(result.closed).toBe(true);
@@ -152,17 +150,16 @@ describe("closeSliceIssue", () => {
 
   it("returns no-mapping when entry not found", async () => {
     const mapPath = join(tmpDir, "ISSUE-MAP.json");
-    await saveIssueMap(mapPath, [makeEntry({ localId: "S99" })]);
+    await saveIssueMap(mapPath, [makeEntry({ localId: "M099" })]);
 
     const provider = mockProvider();
     const config = makeConfig();
 
-    const result = await closeSliceIssue({
+    const result = await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
     });
 
     expect(result).toEqual({ closed: false, reason: "no-mapping" });
@@ -175,12 +172,11 @@ describe("closeSliceIssue", () => {
     const provider = mockProvider();
     const config = makeConfig();
 
-    const result = await closeSliceIssue({
+    const result = await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
     });
 
     expect(result).toEqual({ closed: false, reason: "no-mapping" });
@@ -205,26 +201,24 @@ describe("closeSliceIssue", () => {
     const config = makeConfig();
     const emit = vi.fn();
 
-    const result = await closeSliceIssue({
+    const result = await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
       emit,
     });
 
     expect(result.closed).toBe(true);
-    // Event should still be emitted
+    // Event should still be emitted with milestone (no sliceId)
     expect(emit).toHaveBeenCalledWith("gsd-issues:close-complete", {
       milestone: "M001",
-      sliceId: "S01",
       issueId: 100,
       url: "https://gitlab.com/group/project/-/issues/100",
     });
   });
 
-  it("emits gsd-issues:close-complete on successful close", async () => {
+  it("emits gsd-issues:close-complete with milestoneId on successful close", async () => {
     const mapPath = join(tmpDir, "ISSUE-MAP.json");
     await saveIssueMap(mapPath, [makeEntry()]);
 
@@ -232,19 +226,17 @@ describe("closeSliceIssue", () => {
     const config = makeConfig();
     const emit = vi.fn();
 
-    await closeSliceIssue({
+    await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
       emit,
     });
 
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith("gsd-issues:close-complete", {
       milestone: "M001",
-      sliceId: "S01",
       issueId: 100,
       url: "https://gitlab.com/group/project/-/issues/100",
     });
@@ -258,12 +250,11 @@ describe("closeSliceIssue", () => {
     const config = makeConfig();
     const emit = vi.fn();
 
-    await closeSliceIssue({
+    await closeMilestoneIssue({
       provider,
       config,
       mapPath,
       milestoneId: "M001",
-      sliceId: "S01",
       emit,
     });
 
@@ -289,12 +280,11 @@ describe("closeSliceIssue", () => {
     const config = makeConfig();
 
     await expect(
-      closeSliceIssue({
+      closeMilestoneIssue({
         provider,
         config,
         mapPath,
         milestoneId: "M001",
-        sliceId: "S01",
       }),
     ).rejects.toThrow("Permission denied");
   });

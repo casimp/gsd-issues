@@ -50,7 +50,6 @@ function makePi(overrides: Partial<ExtensionAPI> = {}): ExtensionAPI {
   return {
     registerCommand: vi.fn(),
     registerTool: vi.fn(),
-    on: vi.fn(),
     exec: makeExec(),
     events: { emit: vi.fn() },
     ...overrides,
@@ -78,13 +77,30 @@ const GITHUB_CONFIG: Config = {
   },
 };
 
-const ROADMAP_CONTENT = `# M001 Roadmap
+const ROADMAP_CONTENT = `# M001: Test Milestone
+
+## Slices
 
 - [ ] **S01: Provider abstraction** \`risk:medium\` \`depends:[]\`
   > After this: providers work end-to-end.
 - [ ] **S02: Config system** \`risk:low\` \`depends:[S01]\`
   > After this: config loads from disk.
 - [x] **S03: Already done** \`risk:high\` \`depends:[]\`
+`;
+
+const CONTEXT_CONTENT = `---
+milestone: M001
+---
+
+# M001: Test Milestone — Context
+
+## Project Description
+
+This is a test milestone description.
+
+## Why This Milestone
+
+For testing purposes.
 `;
 
 async function setupTestDir(config: Config = GITLAB_CONFIG, roadmap: string = ROADMAP_CONTENT) {
@@ -103,10 +119,11 @@ async function setupTestDir(config: Config = GITLAB_CONFIG, roadmap: string = RO
     `# GSD State\n\n**Active Milestone:** M001 — Test\n`,
   );
 
-  // Write roadmap
+  // Write roadmap and context
   const milestoneDir = join(tempDir, ".gsd", "milestones", "M001");
   await mkdir(milestoneDir, { recursive: true });
   await writeFile(join(milestoneDir, "M001-ROADMAP.md"), roadmap);
+  await writeFile(join(milestoneDir, "M001-CONTEXT.md"), CONTEXT_CONTENT);
 
   return tempDir;
 }
@@ -128,7 +145,7 @@ describe("handleSync", () => {
     }
   });
 
-  it("creates issues after confirmation (happy path)", async () => {
+  it("creates milestone issue after confirmation (happy path)", async () => {
     tempDir = await setupTestDir();
     process.chdir(tempDir);
 
@@ -146,14 +163,14 @@ describe("handleSync", () => {
     const { handleSync } = await import("../sync.js");
     await handleSync("sync", ctx, pi);
 
-    // Should have shown preview
+    // Should have shown milestone preview
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("S01"),
+      expect.stringContaining("M001"),
       "info",
     );
     // Should have asked confirmation
-    expect(ctx.ui.confirm).toHaveBeenCalledWith("Create 3 issues?");
-    // Should report success (S01, S02, S03 all unmapped — done status doesn't affect sync)
+    expect(ctx.ui.confirm).toHaveBeenCalledWith("Create milestone issue?");
+    // Should report success
     expect(ctx.ui.notify).toHaveBeenCalledWith(
       expect.stringContaining("created"),
       "info",
@@ -175,18 +192,16 @@ describe("handleSync", () => {
     expect(pi.exec).not.toHaveBeenCalled();
   });
 
-  it("reports nothing to do when all slices are mapped", async () => {
+  it("reports nothing to do when milestone already mapped", async () => {
     tempDir = await setupTestDir();
     process.chdir(tempDir);
 
-    // Pre-create ISSUE-MAP.json with all slices mapped
+    // Pre-create ISSUE-MAP.json with milestone mapped
     const milestoneDir = join(tempDir, ".gsd", "milestones", "M001");
     await writeFile(
       join(milestoneDir, "ISSUE-MAP.json"),
       JSON.stringify([
-        { localId: "S01", issueId: 1, provider: "gitlab", url: "https://x/1", createdAt: "2026-01-01T00:00:00Z" },
-        { localId: "S02", issueId: 2, provider: "gitlab", url: "https://x/2", createdAt: "2026-01-01T00:00:00Z" },
-        { localId: "S03", issueId: 3, provider: "gitlab", url: "https://x/3", createdAt: "2026-01-01T00:00:00Z" },
+        { localId: "M001", issueId: 1, provider: "gitlab", url: "https://x/1", createdAt: "2026-01-01T00:00:00Z" },
       ]),
     );
 
@@ -197,7 +212,7 @@ describe("handleSync", () => {
     await handleSync("sync", ctx, pi);
 
     expect(ctx.ui.notify).toHaveBeenCalledWith(
-      expect.stringContaining("Nothing to sync"),
+      expect.stringContaining("already mapped"),
       "info",
     );
     expect(ctx.ui.confirm).not.toHaveBeenCalled();
@@ -267,49 +282,17 @@ describe("handleSync", () => {
     expect(firstCall[0]).toBe("gh");
   });
 
-  it("shows preview with unmapped slice titles", async () => {
-    tempDir = await setupTestDir();
-    process.chdir(tempDir);
-
-    const ctx = makeCtx({ confirm: vi.fn(async () => false) });
-    const pi = makePi();
-
-    const { handleSync } = await import("../sync.js");
-    await handleSync("sync", ctx, pi);
-
-    // Preview should include slice IDs and titles
-    const notifyCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls;
-    const previewCall = notifyCalls.find(
-      (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("S01: Provider abstraction"),
-    );
-    expect(previewCall).toBeDefined();
-    expect(previewCall![0]).toContain("S02: Config system");
-  });
-
   it("reports errors from sync in notification", async () => {
     tempDir = await setupTestDir();
     process.chdir(tempDir);
 
-    let callCount = 0;
-    const exec = vi.fn(async () => {
-      callCount++;
-      if (callCount === 1) {
-        // First issue succeeds
-        return {
-          stdout: `https://gitlab.com/group/project/-/issues/100`,
-          stderr: "",
-          code: 0,
-          killed: false,
-        };
-      }
-      // Second issue fails
-      return {
-        stdout: "",
-        stderr: "503 Service Unavailable",
-        code: 1,
-        killed: false,
-      };
-    });
+    // Provider that always fails
+    const exec = vi.fn(async () => ({
+      stdout: "",
+      stderr: "503 Service Unavailable",
+      code: 1,
+      killed: false,
+    }));
 
     const ctx = makeCtx({ confirm: vi.fn(async () => true) });
     const pi = makePi({ exec });
@@ -338,7 +321,7 @@ describe("gsd_issues_sync tool registration", () => {
     expect(registerTool).toHaveBeenCalledWith(
       expect.objectContaining({
         name: "gsd_issues_sync",
-        description: expect.stringContaining("Sync GSD roadmap slices"),
+        description: expect.stringContaining("Sync a GSD milestone"),
         parameters: expect.objectContaining({
           type: "object",
           properties: expect.objectContaining({
@@ -373,8 +356,11 @@ describe("gsd_issues_sync tool registration", () => {
       const mod = await import("../../index.js");
       mod.default(pi);
 
-      // Get the registered tool's execute fn
-      const toolDef = registerTool.mock.calls[0][0] as ToolDefinition;
+      // Get the sync tool's execute fn
+      const syncCall = registerTool.mock.calls.find(
+        (call) => call[0].name === "gsd_issues_sync",
+      );
+      const toolDef = syncCall![0] as ToolDefinition;
       const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, makeCtx());
 
       expect(result.content).toHaveLength(1);
@@ -388,7 +374,7 @@ describe("gsd_issues_sync tool registration", () => {
     }
   });
 
-  it("tool execute returns nothing-to-sync when all mapped", async () => {
+  it("tool execute returns nothing-to-sync when milestone already mapped", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "sync-tool-noop-"));
     const originalCwd = process.cwd();
 
@@ -396,14 +382,12 @@ describe("gsd_issues_sync tool registration", () => {
       await setupToolDir(tempDir);
       process.chdir(tempDir);
 
-      // Pre-map all slices
+      // Pre-map milestone
       const milestoneDir = join(tempDir, ".gsd", "milestones", "M001");
       await writeFile(
         join(milestoneDir, "ISSUE-MAP.json"),
         JSON.stringify([
-          { localId: "S01", issueId: 1, provider: "gitlab", url: "u", createdAt: "t" },
-          { localId: "S02", issueId: 2, provider: "gitlab", url: "u", createdAt: "t" },
-          { localId: "S03", issueId: 3, provider: "gitlab", url: "u", createdAt: "t" },
+          { localId: "M001", issueId: 1, provider: "gitlab", url: "u", createdAt: "t" },
         ]),
       );
 
@@ -413,10 +397,13 @@ describe("gsd_issues_sync tool registration", () => {
       const mod = await import("../../index.js");
       mod.default(pi);
 
-      const toolDef = registerTool.mock.calls[0][0] as ToolDefinition;
+      const syncCall = registerTool.mock.calls.find(
+        (call) => call[0].name === "gsd_issues_sync",
+      );
+      const toolDef = syncCall![0] as ToolDefinition;
       const result = await toolDef.execute("test-call-id", {}, new AbortController().signal, undefined, makeCtx());
 
-      expect(result.content[0].text).toContain("Nothing to sync");
+      expect(result.content[0].text).toContain("already mapped");
     } finally {
       process.chdir(originalCwd);
       await rm(tempDir, { recursive: true, force: true });
@@ -439,4 +426,29 @@ async function setupToolDir(tempDir: string) {
   const milestoneDir = join(tempDir, ".gsd", "milestones", "M001");
   await mkdir(milestoneDir, { recursive: true });
   await writeFile(join(milestoneDir, "M001-ROADMAP.md"), ROADMAP_CONTENT);
+  await writeFile(join(milestoneDir, "M001-CONTEXT.md"), CONTEXT_CONTENT);
 }
+
+// ── PR tool registration test ──
+
+describe("gsd_issues_pr tool registration", () => {
+  it("registers pr tool with correct name and schema", async () => {
+    const registerTool = vi.fn();
+    const pi = makePi({ registerTool });
+
+    const mod = await import("../../index.js");
+    mod.default(pi);
+
+    const prCall = registerTool.mock.calls.find(
+      (call) => call[0].name === "gsd_issues_pr",
+    );
+    expect(prCall).toBeDefined();
+
+    const toolDef = prCall![0] as ToolDefinition;
+    expect(toolDef.description).toContain("pull request");
+    expect(toolDef.parameters).toBeDefined();
+    expect(toolDef.parameters.properties).toHaveProperty("milestone_id");
+    expect(toolDef.parameters.properties).toHaveProperty("target_branch");
+    expect(typeof toolDef.execute).toBe("function");
+  });
+});

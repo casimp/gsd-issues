@@ -1,8 +1,8 @@
 /**
- * Close orchestration — close the remote issue mapped to a GSD slice.
+ * Close orchestration — close the remote issue mapped to a GSD milestone.
  *
  * Core flow:
- * 1. Load ISSUE-MAP.json to find the mapping for the given sliceId
+ * 1. Load ISSUE-MAP.json to find the mapping for the given milestoneId
  * 2. Call provider.closeIssue() with config-driven doneLabel and reason
  * 3. Emit gsd-issues:close-complete event on success
  *
@@ -10,7 +10,7 @@
  * - CloseResult.closed: false + reason when no mapping found
  * - ProviderError fields available on failure (provider, operation, exitCode, stderr)
  * - Already-closed issues treated as success (ProviderError with "already closed" caught)
- * - gsd-issues:close-complete event: { milestone, sliceId, issueId, url }
+ * - gsd-issues:close-complete event: { milestone, issueId, url }
  */
 
 import type { IssueProvider } from "../providers/types.js";
@@ -25,7 +25,6 @@ export interface CloseOptions {
   config: Config;
   mapPath: string;
   milestoneId: string;
-  sliceId: string;
   emit?: (event: string, payload: unknown) => void;
 }
 
@@ -36,20 +35,20 @@ export type CloseResult =
 // ── Core close function ──
 
 /**
- * Close the remote issue mapped to a slice.
+ * Close the remote issue mapped to a milestone.
  *
  * Returns `{ closed: false, reason: "no-mapping" }` if no map entry exists.
  * Catches ProviderError where stderr/message suggests already-closed and treats as success.
  * Emits `gsd-issues:close-complete` on successful close.
  */
-export async function closeSliceIssue(
+export async function closeMilestoneIssue(
   opts: CloseOptions,
 ): Promise<CloseResult> {
-  const { provider, config, mapPath, milestoneId, sliceId, emit } = opts;
+  const { provider, config, mapPath, milestoneId, emit } = opts;
 
-  // Load map and find entry
+  // Load map and find entry by milestoneId
   const entries = await loadIssueMap(mapPath);
-  const entry = entries.find((e) => e.localId === sliceId);
+  const entry = entries.find((e) => e.localId === milestoneId);
 
   if (!entry) {
     return { closed: false, reason: "no-mapping" };
@@ -88,7 +87,6 @@ export async function closeSliceIssue(
   // Emit completion event
   emit?.("gsd-issues:close-complete", {
     milestone: milestoneId,
-    sliceId,
     issueId: entry.issueId,
     url: entry.url,
   });

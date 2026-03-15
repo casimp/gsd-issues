@@ -185,6 +185,63 @@ export async function readIntegrationBranch(
   return trimmed;
 }
 
+// ── Milestone context reader ──
+
+export interface MilestoneContext {
+  title: string;
+  body: string;
+}
+
+/**
+ * Read a milestone's CONTEXT.md and extract title + body for issue creation.
+ *
+ * Parses the first `# ` heading as title.
+ * Extracts "Project Description" and everything after it as body content.
+ * Returns `null` on missing file (ENOENT).
+ */
+export async function readMilestoneContext(
+  cwd: string,
+  milestoneId: string,
+): Promise<MilestoneContext | null> {
+  const contextPath = join(
+    cwd,
+    ".gsd",
+    "milestones",
+    milestoneId,
+    `${milestoneId}-CONTEXT.md`,
+  );
+
+  let content: string;
+  try {
+    content = await readFile(contextPath, "utf-8");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+
+  // Extract title from first # heading
+  const titleMatch = /^#\s+(.+)$/m.exec(content);
+  const title = titleMatch ? titleMatch[1].replace(/\s*—\s*Context$/, "").trim() : milestoneId;
+
+  // Extract body: everything after the frontmatter/title area
+  // Use Project Description section onward for the body
+  const descIdx = content.indexOf("## Project Description");
+  let body: string;
+  if (descIdx !== -1) {
+    body = content.slice(descIdx).trim();
+  } else {
+    // Fall back to everything after the first heading
+    const headingIdx = content.indexOf(titleMatch?.[0] ?? "");
+    body = headingIdx !== -1
+      ? content.slice(headingIdx + (titleMatch?.[0]?.length ?? 0)).trim()
+      : content.trim();
+  }
+
+  return { title, body };
+}
+
 // ── Path helper ──
 
 /**

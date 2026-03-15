@@ -55,7 +55,7 @@ This milestone is complete only when all are true:
 - [x] **S01: PR/MR provider support and milestone-level mapping** `risk:high` `depends:[]`
   > After this: IssueProvider has createPR() method, both providers can create PRs via CLI, ISSUE-MAP stores milestone→issue entries, readIntegrationBranch() reads META.json.
 
-- [ ] **S02: Milestone-level sync and PR creation** `risk:medium` `depends:[S01]`
+- [x] **S02: Milestone-level sync and PR creation** `risk:medium` `depends:[S01]`
   > After this: `/issues sync` creates one issue per milestone, `/issues pr` creates a PR/MR from milestone branch to target with `Closes #N`, tool_result auto-close hook replaced with PR-driven close.
 
 - [ ] **S03: Import re-scope and cleanup** `risk:low` `depends:[S01,S02]`

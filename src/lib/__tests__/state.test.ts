@@ -5,6 +5,7 @@ import {
   readGSDState,
   findRoadmapPath,
   readIntegrationBranch,
+  readMilestoneContext,
   VALID_BRANCH_NAME,
 } from "../state.js";
 
@@ -350,5 +351,112 @@ describe("readIntegrationBranch", () => {
     await writeMeta("M001", JSON.stringify({ integrationBranch: "   " }));
     const result = await readIntegrationBranch(tmpDir, "M001");
     expect(result).toBeNull();
+  });
+});
+
+// ── readMilestoneContext ──
+
+describe("readMilestoneContext", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    tmpDir = await mkdtemp(join(tmpdir(), "gsd-milestone-ctx-test-"));
+  });
+
+  afterEach(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeContext(milestoneId: string, content: string) {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const dir = join(tmpDir, ".gsd", "milestones", milestoneId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${milestoneId}-CONTEXT.md`), content, "utf-8");
+  }
+
+  it("reads title and body from well-formed CONTEXT.md", async () => {
+    await writeContext("M001", [
+      "---",
+      "milestone: M001",
+      "---",
+      "",
+      "# M001: Issue Tracker Integration — Context",
+      "",
+      "## Project Description",
+      "",
+      "Build the issue tracker integration.",
+      "",
+      "## Why This Milestone",
+      "",
+      "Because we need it.",
+    ].join("\n"));
+
+    const result = await readMilestoneContext(tmpDir, "M001");
+    expect(result).not.toBeNull();
+    expect(result!.title).toBe("M001: Issue Tracker Integration");
+    expect(result!.body).toContain("## Project Description");
+    expect(result!.body).toContain("Build the issue tracker integration.");
+  });
+
+  it("returns null when CONTEXT.md doesn't exist", async () => {
+    const result = await readMilestoneContext(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("strips ' — Context' suffix from title", async () => {
+    await writeContext("M002", [
+      "# M002: PR Workflow — Context",
+      "",
+      "## Project Description",
+      "",
+      "PR workflow stuff.",
+    ].join("\n"));
+
+    const result = await readMilestoneContext(tmpDir, "M002");
+    expect(result!.title).toBe("M002: PR Workflow");
+  });
+
+  it("falls back to milestoneId when no heading found", async () => {
+    await writeContext("M003", [
+      "No heading here.",
+      "",
+      "## Project Description",
+      "",
+      "Some content.",
+    ].join("\n"));
+
+    const result = await readMilestoneContext(tmpDir, "M003");
+    expect(result!.title).toBe("M003");
+    expect(result!.body).toContain("## Project Description");
+  });
+
+  it("extracts body from heading when no Project Description section", async () => {
+    await writeContext("M004", [
+      "# M004: Simple Milestone — Context",
+      "",
+      "Some content without a project description section.",
+      "",
+      "More content.",
+    ].join("\n"));
+
+    const result = await readMilestoneContext(tmpDir, "M004");
+    expect(result!.title).toBe("M004: Simple Milestone");
+    expect(result!.body).toContain("Some content without a project description");
+  });
+
+  it("works with milestone IDs that have random suffixes", async () => {
+    await writeContext("M001-abc123", [
+      "# M001-abc123: Suffixed Milestone — Context",
+      "",
+      "## Project Description",
+      "",
+      "Content here.",
+    ].join("\n"));
+
+    const result = await readMilestoneContext(tmpDir, "M001-abc123");
+    expect(result!.title).toBe("M001-abc123: Suffixed Milestone");
   });
 });

@@ -38,7 +38,6 @@ function makePi(overrides: Partial<ExtensionAPI> = {}): ExtensionAPI {
   return {
     registerCommand: vi.fn(),
     registerTool: vi.fn(),
-    on: vi.fn(),
     exec: makeExec(),
     events: { emit: vi.fn() },
     ...overrides,
