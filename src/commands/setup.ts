@@ -314,6 +314,17 @@ export async function handleSetup(
         .filter(Boolean)
     : [];
 
+  const maxSlicesInput = await ctx.ui.input(
+    "Max slices per milestone:",
+    "5",
+  );
+  const maxSlicesPerMilestone = parseInt(maxSlicesInput, 10);
+
+  const sizingMode = await ctx.ui.select("Sizing mode:", [
+    { value: "best_try", label: "Best try (warn and proceed)" },
+    { value: "strict", label: "Strict (block until right-sized)" },
+  ]) as "strict" | "best_try";
+
   // ── Step 6: Provider-specific config ──
 
   let gitlabConfig: GitLabConfig | undefined;
@@ -378,6 +389,8 @@ export async function handleSetup(
     ...(doneLabel && { done_label: doneLabel }),
     ...(branchPattern && { branch_pattern: branchPattern }),
     ...(labels.length > 0 && { labels }),
+    max_slices_per_milestone: maxSlicesPerMilestone,
+    sizing_mode: sizingMode,
     ...(gitlabConfig && { gitlab: gitlabConfig }),
     ...(githubConfig && { github: githubConfig }),
   };
@@ -409,6 +422,8 @@ export async function handleSetup(
     ...(config.labels && config.labels.length > 0
       ? [`  labels: ${config.labels.join(", ")}`]
       : []),
+    `  max_slices_per_milestone: ${config.max_slices_per_milestone}`,
+    `  sizing_mode: ${config.sizing_mode}`,
     ...(config.gitlab
       ? [
           `  gitlab.project_path: ${config.gitlab.project_path}`,

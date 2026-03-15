@@ -166,6 +166,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("gsd,auto");
+    // Max slices per milestone (default "5")
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode select
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -177,6 +181,8 @@ describe("handleSetup", () => {
     expect(config.assignee).toBe("octocat");
     expect(config.branch_pattern).toBe("{issue_id}-gsd/{milestone}/{slice}");
     expect(config.labels).toEqual(["gsd", "auto"]);
+    expect(config.max_slices_per_milestone).toBe(5);
+    expect(config.sizing_mode).toBe("best_try");
     expect(config.github).toEqual({
       repo: "owner/my-repo",
       close_reason: "completed",
@@ -210,6 +216,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project path (from remote)
     // Project ID (default from discovery: 42)
     ui.input.mockResolvedValueOnce("42");
@@ -259,6 +269,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Repo (manual, no remote)
     ui.input.mockResolvedValueOnce("owner/repo");
     // Project? No
@@ -302,6 +316,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -339,6 +357,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -379,6 +401,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -414,6 +440,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("");
     // Labels — empty
     ui.input.mockResolvedValueOnce("");
+    // Max slices (default "5")
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -449,6 +479,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("workflow");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project ID (default 99)
     ui.input.mockResolvedValueOnce("99");
     // Epic? No
@@ -484,6 +518,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     // Labels
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     // Project? Yes
     ui.confirm.mockResolvedValueOnce(true);
     // Project number
@@ -510,6 +548,10 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("");
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
     ui.confirm.mockResolvedValueOnce(false);
 
     await handleSetup("setup", ctx, exec);
@@ -525,5 +567,63 @@ describe("handleSetup", () => {
       (c) => typeof c[0] === "string" && c[0].includes("✓ Config saved"),
     );
     expect(summaryCalls).toHaveLength(1);
+  });
+
+  it("collects max_slices_per_milestone and sizing_mode with custom values", async () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+
+    const exec = routedExec([
+      gitRemoteRoute("https://github.com/owner/repo.git"),
+      ghMilestoneRoute([{ title: "v1.0", number: 1 }]),
+      ghAuthRoute("octocat"),
+    ]);
+
+    ui.select.mockResolvedValueOnce("v1.0");
+    ui.input.mockResolvedValueOnce("octocat");
+    ui.input.mockResolvedValueOnce("");
+    ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
+    ui.input.mockResolvedValueOnce("");
+    // Max slices = 10
+    ui.input.mockResolvedValueOnce("10");
+    // Sizing mode = strict
+    ui.select.mockResolvedValueOnce("strict");
+    ui.confirm.mockResolvedValueOnce(false);
+
+    await handleSetup("setup", ctx, exec);
+
+    const config = await readConfig(tempDir);
+    expect(config.max_slices_per_milestone).toBe(10);
+    expect(config.sizing_mode).toBe("strict");
+  });
+
+  it("summary includes max_slices_per_milestone and sizing_mode", async () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+
+    const exec = routedExec([
+      gitRemoteRoute("https://github.com/owner/repo.git"),
+      ghMilestoneRoute([{ title: "v1.0", number: 1 }]),
+      ghAuthRoute("octocat"),
+    ]);
+
+    ui.select.mockResolvedValueOnce("v1.0");
+    ui.input.mockResolvedValueOnce("octocat");
+    ui.input.mockResolvedValueOnce("");
+    ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
+    ui.input.mockResolvedValueOnce("");
+    ui.input.mockResolvedValueOnce("3");
+    ui.select.mockResolvedValueOnce("strict");
+    ui.confirm.mockResolvedValueOnce(false);
+
+    await handleSetup("setup", ctx, exec);
+
+    const summaryCall = ui.notify.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("✓ Config saved"),
+    );
+    expect(summaryCall).toBeDefined();
+    const summaryText = summaryCall![0] as string;
+    expect(summaryText).toContain("max_slices_per_milestone: 3");
+    expect(summaryText).toContain("sizing_mode: strict");
   });
 });

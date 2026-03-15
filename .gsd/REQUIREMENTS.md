@@ -147,6 +147,39 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — pi manifest present (pi.extensions: ["./src/index.ts"]), npm pack produces clean tarball (90 files, 77.6kB), tsconfig.build.json excludes tests from dist, registerTool uses single-arg ToolDefinition matching pi's real API (D028), prepublishOnly runs typecheck+test+build, README with installation/setup/usage docs. 188 tests pass. Runtime load validation pending UAT.
 - Notes: package.json with pi manifest, proper exports, README
 
+### R018 — Milestone sizing config
+- Class: core-capability
+- Status: active
+- Description: `/issues setup` collects `max_slices_per_milestone` and `sizing_mode` (strict/best_try), persists to `.gsd/issues.json`
+- Why it matters: Sizing constraints must be configurable per-project — the extension enforces right-sized milestones based on user preference
+- Source: user
+- Primary owning slice: M003/S01
+- Supporting slices: M003/S02
+- Validation: contract — Config interface extended with both fields, validateConfig() rejects bad types/values (15 tests), setup wizard collects with defaults (5 / best_try), summary displays fields (13 setup tests). 266 tests total.
+- Notes: Fields always written to config (not conditional on empty) since they have defaults (D040)
+
+### R019 — Milestone size validation
+- Class: core-capability
+- Status: active
+- Description: After planning, extension validates the milestone's slice count against the configured `max_slices_per_milestone` limit
+- Why it matters: Prevents milestones from growing unbounded — enables the auto-flow split in S02
+- Source: user
+- Primary owning slice: M003/S01
+- Supporting slices: M003/S02
+- Validation: contract — `validateMilestoneSize()` returns typed `SizingResult` with valid/sliceCount/limit/mode/milestoneId. Handles no-limit (skip), under/at/over limit, 0 slices, missing roadmap (throws). 9 tests with real temp-dir roadmap files.
+- Notes: Integration into orchestration loop deferred to S02
+
+### R021 — Auto-flow orchestration
+- Class: core-capability
+- Status: active
+- Description: `/issues auto` drives the full milestone lifecycle — import, plan, size-check, split, create issues, execute, PR — using pi.sendMessage and ctx.newSession
+- Why it matters: One command drives the entire workflow end-to-end without manual intervention
+- Source: user
+- Primary owning slice: M003/S02
+- Supporting slices: none
+- Validation: unmapped — deferred to M003/S02
+- Notes: Depends on S01's config and sizing validation
+
 ## Validated
 
 ### R014 — PR/MR creation on milestone completion
@@ -251,13 +284,16 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R015 | core-capability | validated | M002/S02 | M002/S01 | contract |
 | R016 | core-capability | validated | M002/S03 | none | contract |
 | R017 | differentiator | deferred | none | none | unmapped |
+| R018 | core-capability | active | M003/S01 | M003/S02 | contract |
+| R019 | core-capability | active | M003/S01 | M003/S02 | contract |
 | R020 | differentiator | deferred | none | none | unmapped |
+| R021 | core-capability | active | M003/S02 | none | unmapped |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |
 
 ## Coverage Summary
 
-- Active requirements: 13
-- Mapped to slices: 13
+- Active requirements: 16
+- Mapped to slices: 16
 - Validated: 3
 - Unmapped active requirements: 0

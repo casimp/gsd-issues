@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR Workflow) both complete. The extension operates at milestone level for all workflows. 242 contract tests across 15 files. Runtime UAT on real remotes is the remaining validation gap.
+M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR Workflow) both complete. M003 (Milestone Sizing and Auto-Flow Orchestration) in progress — S01 complete, S02 next. The extension operates at milestone level for all workflows. Config extended with `max_slices_per_milestone` and `sizing_mode` fields. `validateMilestoneSize()` validates slice count against configured limits. 266 contract tests across 16 files. Runtime UAT on real remotes is the remaining validation gap.
 
 ## Architecture / Key Patterns
 
@@ -36,3 +36,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 - [x] M001: Issue tracker integration — Provider abstraction, config, CLI wrappers (foundation)
 - [x] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge, import re-scope
+- [ ] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, `/issues auto` lifecycle

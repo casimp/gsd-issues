@@ -227,6 +227,148 @@ describe("validateConfig", () => {
       expect(err.length).toBeGreaterThan(10);
     }
   });
+
+  // ── max_slices_per_milestone validation ──
+
+  it("accepts valid max_slices_per_milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: 5,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("accepts max_slices_per_milestone of 1", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: 1,
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects non-number max_slices_per_milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: "five",
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('"max_slices_per_milestone"'))).toBe(true);
+    expect(result.errors.some((e) => e.includes("expected number"))).toBe(true);
+  });
+
+  it("rejects zero max_slices_per_milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: 0,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("positive integer"))).toBe(true);
+  });
+
+  it("rejects negative max_slices_per_milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: -1,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("positive integer"))).toBe(true);
+  });
+
+  it("rejects float max_slices_per_milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      max_slices_per_milestone: 2.5,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("positive integer"))).toBe(true);
+  });
+
+  it("accepts absent max_slices_per_milestone (backward compat)", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // ── sizing_mode validation ──
+
+  it("accepts valid sizing_mode 'strict'", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      sizing_mode: "strict",
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts valid sizing_mode 'best_try'", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      sizing_mode: "best_try",
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects invalid sizing_mode string", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      sizing_mode: "lenient",
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("sizing_mode"))).toBe(true);
+    expect(result.errors.some((e) => e.includes('"strict" or "best_try"'))).toBe(true);
+  });
+
+  it("rejects number sizing_mode", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      sizing_mode: 42,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("sizing_mode"))).toBe(true);
+  });
+
+  it("rejects boolean sizing_mode", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      sizing_mode: true,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes("sizing_mode"))).toBe(true);
+  });
+
+  it("accepts absent sizing_mode (backward compat)", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+    });
+    expect(result.valid).toBe(true);
+  });
 });
 
 describe("loadConfig / saveConfig", () => {

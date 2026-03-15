@@ -41,6 +41,8 @@ export interface Config {
   done_label?: string;
   branch_pattern?: string;
   labels?: string[];
+  max_slices_per_milestone?: number;
+  sizing_mode?: "strict" | "best_try";
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
   /** Allow extra fields to pass through without breaking validation */
@@ -112,6 +114,31 @@ export function validateConfig(config: unknown): {
           );
         }
       }
+    }
+  }
+
+  // Optional: max_slices_per_milestone (positive integer when present)
+  if ("max_slices_per_milestone" in c) {
+    if (typeof c.max_slices_per_milestone !== "number") {
+      errors.push(
+        `Invalid type for "max_slices_per_milestone": expected number, got ${typeof c.max_slices_per_milestone}`,
+      );
+    } else if (
+      !Number.isInteger(c.max_slices_per_milestone) ||
+      c.max_slices_per_milestone < 1
+    ) {
+      errors.push(
+        `Invalid value for "max_slices_per_milestone": must be a positive integer (≥1), got ${c.max_slices_per_milestone}`,
+      );
+    }
+  }
+
+  // Optional: sizing_mode (enum when present)
+  if ("sizing_mode" in c) {
+    if (c.sizing_mode !== "strict" && c.sizing_mode !== "best_try") {
+      errors.push(
+        `Invalid sizing_mode: "${String(c.sizing_mode)}" — must be "strict" or "best_try"`,
+      );
     }
   }
 
