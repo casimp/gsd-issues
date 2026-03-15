@@ -136,6 +136,50 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — gsd_issues_sync tool registered via pi.registerTool() with TypeBox schema (optional milestone_id, roadmap_path params). gsd_issues_close tool registered with TypeBox schema (slice_id, optional milestone_id params) (S04). gsd_issues_import tool registered with TypeBox schema (optional milestone, labels, state, assignee params) (S05). All three workflow tools return structured ToolResult.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
 
+### R014 — PR/MR creation on milestone completion
+- Class: primary-user-loop
+- Status: active
+- Description: Create a PR/MR from the milestone branch to main when a milestone completes, with `Closes #N` linking to the milestone's issue so close happens on merge
+- Why it matters: Review is a fundamental part of team workflows — the milestone is the reviewable unit, one PR per milestone
+- Source: user
+- Primary owning slice: none
+- Supporting slices: none
+- Validation: unmapped
+- Notes: Uses `gh pr create` / `glab mr create`. GSD already supports integration branches — if started from a milestone branch, slices merge into it, not main. PR targets main.
+
+### R015 — Milestone-level issue tracking
+- Class: core-capability
+- Status: active
+- Description: Sync creates one issue per milestone (not per slice). ISSUE-MAP maps milestone → issue. Close fires on milestone completion, not slice completion.
+- Why it matters: The milestone is the meaningful external unit — it has a clear outcome, maps to one branch and one PR. Slices are internal implementation detail.
+- Source: user
+- Primary owning slice: none
+- Supporting slices: none
+- Validation: unmapped
+- Notes: Replaces M001's per-slice sync model. The underlying provider abstraction and CLI wrappers remain valid. Sync/close orchestration rebuilt around milestones.
+
+### R016 — Reverse flow: import issues and re-scope into milestones
+- Class: core-capability
+- Status: active
+- Description: Import existing issues from the tracker, use them as planning input, then close/re-weight the originals and create new milestone-scoped issues reflecting the planned work
+- Why it matters: Real workflows start with vague issues on the tracker — the extension should reshape them into right-sized milestones, not just mirror GSD's internal state
+- Source: user
+- Primary owning slice: none
+- Supporting slices: none
+- Validation: unmapped
+- Notes: Builds on M001's import (fetch + format). Adds the re-scope step: close originals, create new milestone issues.
+
+### R017 — Sub-issues for slice visibility (optional)
+- Class: differentiator
+- Status: deferred
+- Description: Optionally create sub-issues (GitLab) or task-list items (GitHub) under the milestone issue for each slice, giving visibility into what GSD did internally
+- Why it matters: Nice-to-have for teams that want to see the breakdown without making slices the primary tracking unit
+- Source: user
+- Primary owning slice: none
+- Supporting slices: none
+- Validation: unmapped
+- Notes: GitLab has native sub-issues. GitHub has task lists that can link to issues. Not a core requirement for now.
+
 ### R013 — npm packaging and distribution
 - Class: launchability
 - Status: active
@@ -205,13 +249,17 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |
 | R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | unmapped |
 | R013 | launchability | active | M001/S06 | none | contract |
+| R014 | primary-user-loop | active | none | none | unmapped |
+| R015 | core-capability | active | none | none | unmapped |
+| R016 | core-capability | active | none | none | unmapped |
+| R017 | differentiator | deferred | none | none | unmapped |
 | R020 | differentiator | deferred | none | none | unmapped |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |
 
 ## Coverage Summary
 
-- Active requirements: 13
+- Active requirements: 16
 - Mapped to slices: 13
 - Validated: 0
-- Unmapped active requirements: 0
+- Unmapped active requirements: 3
