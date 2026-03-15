@@ -1,14 +1,40 @@
 # gsd-issues
 
-Issue tracker integration for GSD and pi. Syncs GSD roadmap slices to GitHub/GitLab issues, imports remote issues for planning, and auto-closes issues on slice completion.
+A [pi](https://github.com/anthropics/pi) extension that connects [GSD](https://github.com/casimp/gsd) milestones to GitHub and GitLab issue trackers.
 
-## Features
+GSD breaks work into milestones — right-sized chunks with a bounded number of slices. This extension gives each milestone a corresponding issue on your tracker and creates a PR when the milestone is done. The issue closes automatically when the PR merges. That's the whole loop.
 
-- **Sync** — Create remote issues from GSD roadmap slices with milestone, assignee, labels, weight, and epic support
-- **Close** — Close the remote issue mapped to a completed slice
-- **Import** — Fetch remote issues as structured markdown for LLM-assisted planning
-- **Auto-close** — Lifecycle hook that closes mapped issues when a slice summary is written
-- **Dual provider** — GitHub (via `gh` CLI) and GitLab (via `glab` CLI)
+## How It Works
+
+```mermaid
+flowchart TD
+    subgraph plan["Planning (two entry points)"]
+        A[New work] --> C[GSD plans milestones]
+        B[Existing tracker issues] -- "/issues import" --> C
+    end
+
+    C -- "/issues sync" --> E[Issue on tracker]
+    E --> F[Work slices on milestone branch]
+    F -- "/issues pr" --> G["PR/MR with Closes #N"]
+    G --> H[Review & merge]
+    H --> I[Issue auto-closes]
+```
+
+**Starting from scratch:** GSD plans your milestones. `/issues sync` creates an issue on the tracker for each one.
+
+**Starting from existing issues:** `/issues import` pulls issues from the tracker as markdown. GSD decomposes them into right-sized milestones. `/issues import --rescope` closes the originals and creates milestone-scoped issues.
+
+**Then, for every milestone:** work the slices on a milestone branch. When done, `/issues pr` creates a PR with `Closes #42` in the body. Merge the PR, the issue closes.
+
+## Providers
+
+Both GitHub (via `gh` CLI) and GitLab (via `glab` CLI) are supported, auto-detected from your git remote.
+
+| | GitHub | GitLab |
+|---|---|---|
+| Issues | ✓ milestones, labels | ✓ epics, weight, labels |
+| PRs | `gh pr create` | `glab mr create` |
+| Close | `Closes #N` in PR body | `Closes #N` in MR body |
 
 ## Installation
 
@@ -16,7 +42,7 @@ Issue tracker integration for GSD and pi. Syncs GSD roadmap slices to GitHub/Git
 npm install -g gsd-issues
 ```
 
-Add to your pi `settings.json` packages array:
+Or add to your pi `settings.json`:
 
 ```json
 {
@@ -24,28 +50,16 @@ Add to your pi `settings.json` packages array:
 }
 ```
 
-Pi will discover the extension automatically on next launch.
-
 ## Setup
-
-Run the interactive setup wizard:
 
 ```
 /issues setup
 ```
 
-The wizard will:
+Walks you through provider detection, project discovery, and writes `.gsd/issues.json`. Or create it manually:
 
-1. Detect your provider (GitHub or GitLab) from the git remote
-2. Discover the project/repo path
-3. Prompt for milestone, assignee, labels, and provider-specific options
-4. Write `.gsd/issues.json` config
-
-### Manual Configuration
-
-Create `.gsd/issues.json` in your project root:
-
-**GitLab:**
+<details>
+<summary>GitLab config</summary>
 
 ```json
 {
@@ -62,8 +76,10 @@ Create `.gsd/issues.json` in your project root:
   }
 }
 ```
+</details>
 
-**GitHub:**
+<details>
+<summary>GitHub config</summary>
 
 ```json
 {
@@ -77,70 +93,66 @@ Create `.gsd/issues.json` in your project root:
   }
 }
 ```
+</details>
 
 ## Commands
 
-All commands are accessed via `/issues <subcommand>` in pi.
+All via `/issues <subcommand>` in pi.
 
-### `/issues setup`
+| Command | What it does |
+|---|---|
+| `/issues setup` | Interactive config wizard |
+| `/issues sync` | Create a tracker issue for the current milestone |
+| `/issues pr [id]` | Create a PR/MR from the milestone branch with `Closes #N` |
+| `/issues import` | Fetch issues from tracker as markdown for planning |
+| `/issues close [id]` | Close a milestone's issue directly (without a PR) |
 
-Interactive configuration wizard. Detects provider, discovers project details, and writes `.gsd/issues.json`.
+### Sync
 
-### `/issues sync`
+Creates one issue per milestone with title from ROADMAP.md and description from CONTEXT.md. Previews what will be created and asks for confirmation. Skips milestones that already have a mapped issue.
 
-Syncs unmapped GSD roadmap slices to remote issues. Shows a preview of what will be created and asks for confirmation before proceeding.
+### PR
 
-### `/issues import`
+Creates a PR/MR from the milestone branch to the target branch. Target is resolved from META.json, then falls back to `main`. Use `--target <branch>` to override.
 
-Imports open issues from the remote tracker as formatted markdown.
+### Import
 
-Flags:
-- `--milestone <name>` — Filter by milestone (overrides config)
-- `--labels <a,b>` — Filter by labels (comma-separated)
+Fetches open issues, optionally filtered by `--milestone` or `--labels`. For re-scoping existing issues into milestones:
 
-### `/issues close <slice_id>`
+```
+/issues import --rescope M003 --originals 10,11,12
+```
 
-Closes the remote issue mapped to the given slice ID.
+This closes issues #10, #11, #12 and creates a new milestone-scoped issue for M003.
 
-### `/issues status`
+## LLM Tools
 
-_(Not yet implemented)_
+Four tools are registered for agent use (no confirmation prompts):
 
-## Tools (LLM-callable)
-
-These tools are registered for LLM callers (agents) and are not typically invoked directly by users.
-
-### `gsd_issues_sync`
-
-Syncs roadmap slices to remote issues. Accepts optional `milestone_id` and `roadmap_path` parameters. Runs without confirmation (LLM-driven).
-
-### `gsd_issues_close`
-
-Closes the remote issue for a given `slice_id`. Accepts optional `milestone_id`.
-
-### `gsd_issues_import`
-
-Imports issues with optional filtering by `milestone`, `labels`, `state`, and `assignee`. Returns structured markdown.
-
-## Auto-close Hook
-
-The extension registers a `tool_result` lifecycle hook. When a write tool produces a file matching `.gsd/milestones/M###/slices/S##/S##-SUMMARY.md`, the mapped issue is automatically closed. This integrates with the GSD workflow — completing a slice summary triggers issue closure without explicit user action.
+| Tool | Parameters |
+|---|---|
+| `gsd_issues_sync` | `milestone_id?` |
+| `gsd_issues_close` | `milestone_id?` |
+| `gsd_issues_pr` | `milestone_id?`, `target_branch?`, `dry_run?` |
+| `gsd_issues_import` | `milestone?`, `labels?`, `state?`, `assignee?`, `rescope_milestone_id?`, `original_issue_ids?` |
 
 ## Events
 
-The extension emits events on `pi.events` for composability:
+Emitted on `pi.events` for other extensions to consume:
 
-| Event | Payload | When |
-|-------|---------|------|
-| `gsd-issues:sync-complete` | `{ milestone, created, skipped, errors }` | After sync finishes |
-| `gsd-issues:close-complete` | `{ sliceId, milestone, issueId, url }` | After issue is closed |
-| `gsd-issues:import-complete` | `{ issueCount }` | After import finishes |
+| Event | Payload |
+|---|---|
+| `gsd-issues:sync-complete` | `{ milestone, created, skipped, errors }` |
+| `gsd-issues:close-complete` | `{ milestone, issueId, url }` |
+| `gsd-issues:pr-complete` | `{ milestoneId, prUrl, prNumber }` |
+| `gsd-issues:import-complete` | `{ issueCount }` |
+| `gsd-issues:rescope-complete` | `{ milestoneId, createdIssueId, closedOriginals, closeErrors }` |
 
 ## Requirements
 
 - Node.js >= 18
-- `gh` CLI (for GitHub) or `glab` CLI (for GitLab) installed and authenticated
-- pi coding agent
+- `gh` CLI (GitHub) or `glab` CLI (GitLab), installed and authenticated
+- [pi](https://github.com/anthropics/pi) coding agent
 
 ## License
 
