@@ -16,20 +16,8 @@ import { loadConfig } from "../lib/config.js";
 import { readGSDState, findRoadmapPath } from "../lib/state.js";
 import { syncMilestoneToIssue } from "../lib/sync.js";
 import { loadIssueMap } from "../lib/issue-map.js";
-import { GitLabProvider } from "../providers/gitlab.js";
-import { GitHubProvider } from "../providers/github.js";
-import type { IssueProvider } from "../providers/types.js";
+import { createProvider } from "../lib/provider-factory.js";
 import { join, dirname } from "node:path";
-
-/**
- * Create the appropriate provider from config.
- */
-function createProvider(config: ReturnType<typeof loadConfig> extends Promise<infer T> ? T : never, exec: ExtensionAPI["exec"]): IssueProvider {
-  if (config.provider === "gitlab") {
-    return new GitLabProvider(exec, config.gitlab?.project_path);
-  }
-  return new GitHubProvider(exec, config.github?.repo);
-}
 
 /**
  * Handle `/issues sync` — interactive sync with confirmation.

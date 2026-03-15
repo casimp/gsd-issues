@@ -21,11 +21,10 @@ import { readGSDState, findRoadmapPath } from "./lib/state.js";
 import { syncMilestoneToIssue, SyncToolSchema, type SyncToolParams } from "./lib/sync.js";
 import { closeMilestoneIssue } from "./lib/close.js";
 import { createMilestonePR, PrToolSchema, type PrToolParams } from "./lib/pr.js";
-import { importIssues, ImportToolSchema, type ImportToolParams } from "./lib/import.js";
+import { importIssues, ImportToolSchema, type ImportToolParams, rescopeIssues } from "./lib/import.js";
 import { loadIssueMap } from "./lib/issue-map.js";
-import { GitLabProvider } from "./providers/gitlab.js";
-import { GitHubProvider } from "./providers/github.js";
-import type { ExecFn, IssueProvider } from "./providers/types.js";
+import { createProvider } from "./lib/provider-factory.js";
+import type { ExecFn } from "./providers/types.js";
 import { join, dirname } from "node:path";
 
 // ── Minimal pi extension API types ──
@@ -83,14 +82,7 @@ export interface ExtensionAPI {
   };
 }
 
-// ── Provider instantiation ──
-
-function createProvider(config: Config, exec: ExecFn): IssueProvider {
-  if (config.provider === "gitlab") {
-    return new GitLabProvider(exec, config.gitlab?.project_path);
-  }
-  return new GitHubProvider(exec, config.github?.repo);
-}
+// ── Provider instantiation via shared factory ──
 
 // ── Subcommand list ──
 
@@ -237,6 +229,51 @@ export default function (pi: ExtensionAPI): void {
 
       const config = await loadConfig(cwd);
 
+      // Re-scope mode: when both rescope params are present
+      if (typedParams.rescope_milestone_id && typedParams.original_issue_ids) {
+        const milestoneId = typedParams.rescope_milestone_id;
+        const roadmapPath = findRoadmapPath(cwd, milestoneId);
+        const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+        const provider = createProvider(config, pi.exec);
+
+        const result = await rescopeIssues({
+          provider,
+          config,
+          milestoneId,
+          originalIssueIds: typedParams.original_issue_ids,
+          cwd,
+          mapPath,
+          exec: pi.exec,
+          emit: pi.events.emit.bind(pi.events),
+        });
+
+        if (result.skipped) {
+          return {
+            content: [{ type: "text", text: `Milestone ${milestoneId} is already mapped. Re-scope skipped.` }],
+            details: result,
+          };
+        }
+
+        const lines: string[] = [];
+        lines.push(`Re-scope complete for ${milestoneId}:`);
+        if (result.created) {
+          lines.push(`  Created issue #${result.created.issueId} (${result.created.url})`);
+        }
+        lines.push(`  Closed originals: ${result.closedOriginals.length}`);
+        if (result.closeErrors.length > 0) {
+          lines.push(`  Close errors: ${result.closeErrors.length}`);
+          for (const e of result.closeErrors) {
+            lines.push(`    #${e.issueId}: ${e.error}`);
+          }
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: result,
+        };
+      }
+
+      // Standard import mode
       // Resolve milestone: from params, config, or GSD state
       let milestoneId = typedParams.milestone ?? config.milestone;
       if (!milestoneId) {

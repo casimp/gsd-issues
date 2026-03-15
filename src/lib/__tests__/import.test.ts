@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { importIssues } from "../import.js";
 import type { Issue } from "../../providers/types.js";
 
@@ -238,5 +238,276 @@ describe("importIssues", () => {
       const unweightedPos = result.markdown.indexOf("## #2:");
       expect(weightedPos).toBeLessThan(unweightedPos);
     });
+  });
+});
+
+// ── Re-scope tests ──
+
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { rescopeIssues, type RescopeOptions, type RescopeResult } from "../import.js";
+import { saveIssueMap, loadIssueMap } from "../issue-map.js";
+import { ProviderError } from "../../providers/types.js";
+import type {
+  IssueProvider,
+  CreateIssueOpts,
+  IssueMapEntry,
+  ExecFn,
+  ExecResult,
+} from "../../providers/types.js";
+import type { Config } from "../config.js";
+
+function makeRescopeConfig(overrides: Partial<Config> = {}): Config {
+  return {
+    provider: "gitlab",
+    milestone: "M001",
+    done_label: "status::done",
+    gitlab: {
+      project_path: "group/project",
+      project_id: 42,
+    },
+    ...overrides,
+  };
+}
+
+function makeRescopeIssue(id: number, title: string) {
+  return {
+    id,
+    title,
+    state: "open" as const,
+    url: `https://gitlab.com/group/project/-/issues/${id}`,
+    labels: [],
+  };
+}
+
+function makeRescopeProvider(
+  overrides: Partial<IssueProvider> = {},
+): IssueProvider {
+  let nextId = 200;
+  return {
+    name: "gitlab",
+    createIssue: vi.fn(async (opts: CreateIssueOpts) => makeRescopeIssue(nextId++, opts.title)),
+    closeIssue: vi.fn(async () => {}),
+    listIssues: vi.fn(async () => []),
+    addLabels: vi.fn(async () => {}),
+    createPR: vi.fn(async () => ({ url: "", number: 0 })),
+    ...overrides,
+  };
+}
+
+function makeRescopeExec(overrides: Partial<ExecResult> = {}): ExecFn {
+  return vi.fn(async () => ({
+    stdout: "",
+    stderr: "",
+    code: 0,
+    killed: false,
+    ...overrides,
+  }));
+}
+
+async function setupRescopeMilestone(tmpDir: string, milestoneId: string): Promise<void> {
+  const dir = join(tmpDir, ".gsd", "milestones", milestoneId);
+  await mkdir(dir, { recursive: true });
+
+  await writeFile(
+    join(dir, `${milestoneId}-CONTEXT.md`),
+    `# ${milestoneId}: Test\n\n## Project Description\n\nTest description.\n`,
+  );
+  await writeFile(
+    join(dir, `${milestoneId}-ROADMAP.md`),
+    `# Test Milestone\n\n## Slices\n\n- [ ] **S01: Setup** \`risk:low\` \`depends:[]\`\n`,
+  );
+}
+
+describe("rescopeIssues", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "rescope-lib-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    await rm(tmpDir, { recursive: true });
+  });
+
+  it("happy path — creates milestone issue and closes all originals", async () => {
+    await setupRescopeMilestone(tmpDir, "M001");
+    const mapPath = join(tmpDir, ".gsd", "milestones", "M001", "ISSUE-MAP.json");
+    const provider = makeRescopeProvider();
+    const emit = vi.fn();
+
+    const result = await rescopeIssues({
+      provider,
+      config: makeRescopeConfig(),
+      milestoneId: "M001",
+      originalIssueIds: [10, 11, 12],
+      cwd: tmpDir,
+      mapPath,
+      exec: makeRescopeExec(),
+      emit,
+    });
+
+    expect(result.skipped).toBe(false);
+    expect(result.created).not.toBeNull();
+    expect(result.created!.localId).toBe("M001");
+    expect(result.closedOriginals).toEqual([10, 11, 12]);
+    expect(result.closeErrors).toEqual([]);
+
+    // Verify provider.closeIssue called for each original
+    expect(provider.closeIssue).toHaveBeenCalledTimes(3);
+
+    // Verify ISSUE-MAP persisted
+    const map = await loadIssueMap(mapPath);
+    expect(map.some((e) => e.localId === "M001")).toBe(true);
+
+    // Verify event emitted
+    expect(emit).toHaveBeenCalledWith(
+      "gsd-issues:rescope-complete",
+      expect.objectContaining({
+        milestoneId: "M001",
+        closedOriginals: [10, 11, 12],
+        closeErrors: [],
+      }),
+    );
+  });
+
+  it("partial failure — one original fails to close, others still closed", async () => {
+    await setupRescopeMilestone(tmpDir, "M001");
+    const mapPath = join(tmpDir, ".gsd", "milestones", "M001", "ISSUE-MAP.json");
+
+    let callCount = 0;
+    const closeIssue = vi.fn(async (opts: { issueId: number }) => {
+      callCount++;
+      if (opts.issueId === 11) {
+        throw new ProviderError(
+          "network error",
+          "gitlab",
+          "closeIssue",
+          1,
+          "connection refused",
+          "glab",
+        );
+      }
+    });
+
+    const provider = makeRescopeProvider({ closeIssue });
+    const emit = vi.fn();
+
+    const result = await rescopeIssues({
+      provider,
+      config: makeRescopeConfig(),
+      milestoneId: "M001",
+      originalIssueIds: [10, 11, 12],
+      cwd: tmpDir,
+      mapPath,
+      exec: makeRescopeExec(),
+      emit,
+    });
+
+    expect(result.skipped).toBe(false);
+    expect(result.closedOriginals).toEqual([10, 12]);
+    expect(result.closeErrors).toHaveLength(1);
+    expect(result.closeErrors[0].issueId).toBe(11);
+    expect(result.closeErrors[0].error).toContain("network error");
+
+    // All 3 were attempted
+    expect(closeIssue).toHaveBeenCalledTimes(3);
+
+    // Event includes close errors
+    expect(emit).toHaveBeenCalledWith(
+      "gsd-issues:rescope-complete",
+      expect.objectContaining({
+        closedOriginals: [10, 12],
+        closeErrors: expect.arrayContaining([
+          expect.objectContaining({ issueId: 11 }),
+        ]),
+      }),
+    );
+  });
+
+  it("double re-scope — milestone already mapped, skips entirely", async () => {
+    await setupRescopeMilestone(tmpDir, "M001");
+    const mapPath = join(tmpDir, ".gsd", "milestones", "M001", "ISSUE-MAP.json");
+
+    // Pre-populate map with existing M001 entry
+    await saveIssueMap(mapPath, [
+      {
+        localId: "M001",
+        issueId: 99,
+        provider: "gitlab",
+        url: "https://gitlab.com/group/project/-/issues/99",
+        createdAt: "2026-01-01T00:00:00.000Z",
+      },
+    ]);
+
+    const provider = makeRescopeProvider();
+    const emit = vi.fn();
+
+    const result = await rescopeIssues({
+      provider,
+      config: makeRescopeConfig(),
+      milestoneId: "M001",
+      originalIssueIds: [10, 11],
+      cwd: tmpDir,
+      mapPath,
+      exec: makeRescopeExec(),
+      emit,
+    });
+
+    expect(result.skipped).toBe(true);
+    expect(result.created).toBeNull();
+    expect(result.closedOriginals).toEqual([]);
+    expect(result.closeErrors).toEqual([]);
+
+    // No provider calls made
+    expect(provider.createIssue).not.toHaveBeenCalled();
+    expect(provider.closeIssue).not.toHaveBeenCalled();
+
+    // Event still emitted for observability
+    expect(emit).toHaveBeenCalledWith(
+      "gsd-issues:rescope-complete",
+      expect.objectContaining({
+        milestoneId: "M001",
+        createdIssueId: null,
+      }),
+    );
+  });
+
+  it("already-closed original treated as success, not error", async () => {
+    await setupRescopeMilestone(tmpDir, "M001");
+    const mapPath = join(tmpDir, ".gsd", "milestones", "M001", "ISSUE-MAP.json");
+
+    const closeIssue = vi.fn(async (opts: { issueId: number }) => {
+      if (opts.issueId === 10) {
+        throw new ProviderError(
+          "Issue already closed",
+          "gitlab",
+          "closeIssue",
+          1,
+          "Issue has already been closed",
+          "glab",
+        );
+      }
+    });
+
+    const provider = makeRescopeProvider({ closeIssue });
+
+    const result = await rescopeIssues({
+      provider,
+      config: makeRescopeConfig(),
+      milestoneId: "M001",
+      originalIssueIds: [10, 11],
+      cwd: tmpDir,
+      mapPath,
+      exec: makeRescopeExec(),
+    });
+
+    expect(result.closedOriginals).toEqual([10, 11]);
+    expect(result.closeErrors).toEqual([]);
   });
 });

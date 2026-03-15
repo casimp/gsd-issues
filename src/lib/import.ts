@@ -15,7 +15,11 @@
  */
 
 import { Type, type Static } from "@sinclair/typebox";
-import type { Issue } from "../providers/types.js";
+import type { Issue, IssueProvider, IssueMapEntry, ExecFn } from "../providers/types.js";
+import { ProviderError } from "../providers/types.js";
+import type { Config } from "./config.js";
+import { syncMilestoneToIssue } from "./sync.js";
+import { loadIssueMap } from "./issue-map.js";
 
 // ── Types ──
 
@@ -117,6 +121,127 @@ export function importIssues(opts: ImportOptions): ImportResult {
   };
 }
 
+// ── Re-scope types ──
+
+export interface RescopeOptions {
+  provider: IssueProvider;
+  config: Config;
+  milestoneId: string;
+  originalIssueIds: number[];
+  cwd: string;
+  mapPath: string;
+  exec: ExecFn;
+  emit?: (event: string, payload: unknown) => void;
+  dryRun?: boolean;
+}
+
+export interface RescopeResult {
+  created: IssueMapEntry | null;
+  closedOriginals: number[];
+  closeErrors: Array<{ issueId: number; error: string }>;
+  skipped: boolean;
+}
+
+// ── Re-scope function ──
+
+/**
+ * Re-scope imported tracker issues to a GSD milestone.
+ *
+ * Creates a single milestone-level issue via syncMilestoneToIssue(),
+ * then closes each original tracker issue best-effort. If the milestone
+ * is already mapped in ISSUE-MAP, the entire operation is skipped.
+ *
+ * Already-closed originals are treated as success (not errors).
+ *
+ * Emits `gsd-issues:rescope-complete` with operation summary.
+ */
+export async function rescopeIssues(opts: RescopeOptions): Promise<RescopeResult> {
+  const { provider, config, milestoneId, originalIssueIds, cwd, mapPath, exec, emit, dryRun } = opts;
+
+  // Check if milestone already mapped → skip
+  const existingMap = await loadIssueMap(mapPath);
+  const alreadyMapped = existingMap.some((e) => e.localId === milestoneId);
+
+  if (alreadyMapped) {
+    const result: RescopeResult = {
+      created: null,
+      closedOriginals: [],
+      closeErrors: [],
+      skipped: true,
+    };
+
+    emit?.("gsd-issues:rescope-complete", {
+      milestoneId,
+      createdIssueId: null,
+      closedOriginals: [],
+      closeErrors: [],
+    });
+
+    return result;
+  }
+
+  // Create milestone issue via syncMilestoneToIssue (reuse, not duplicate)
+  const syncResult = await syncMilestoneToIssue({
+    provider,
+    config: { ...config, milestone: milestoneId },
+    milestoneId,
+    cwd,
+    mapPath,
+    exec,
+    emit,
+    dryRun,
+  });
+
+  const createdEntry = syncResult.created.length > 0 ? syncResult.created[0] : null;
+
+  // Close originals best-effort
+  const closedOriginals: number[] = [];
+  const closeErrors: Array<{ issueId: number; error: string }> = [];
+
+  if (!dryRun) {
+    const doneLabel = config.done_label;
+    const reason = config.github?.close_reason;
+
+    for (const issueId of originalIssueIds) {
+      try {
+        await provider.closeIssue({
+          issueId,
+          doneLabel,
+          reason,
+        });
+        closedOriginals.push(issueId);
+      } catch (err) {
+        // Treat already-closed as success
+        if (err instanceof ProviderError) {
+          const msg = (err.stderr + " " + err.message).toLowerCase();
+          if (msg.includes("already closed") || msg.includes("already been closed")) {
+            closedOriginals.push(issueId);
+            continue;
+          }
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        closeErrors.push({ issueId, error: msg });
+      }
+    }
+  }
+
+  const result: RescopeResult = {
+    created: createdEntry,
+    closedOriginals,
+    closeErrors,
+    skipped: false,
+  };
+
+  emit?.("gsd-issues:rescope-complete", {
+    milestoneId,
+    createdIssueId: createdEntry?.issueId ?? null,
+    closedOriginals,
+    closeErrors,
+  });
+
+  return result;
+}
+
 // ── TypeBox tool schema ──
 
 export const ImportToolSchema = Type.Object({
@@ -128,6 +253,8 @@ export const ImportToolSchema = Type.Object({
     Type.Literal("all"),
   ])),
   assignee: Type.Optional(Type.String()),
+  rescope_milestone_id: Type.Optional(Type.String()),
+  original_issue_ids: Type.Optional(Type.Array(Type.Number())),
 });
 
 export type ImportToolParams = Static<typeof ImportToolSchema>;

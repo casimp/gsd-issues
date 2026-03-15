@@ -15,17 +15,8 @@ import type { ExtensionCommandContext, ExtensionAPI } from "../index.js";
 import { loadConfig } from "../lib/config.js";
 import { readGSDState, findRoadmapPath } from "../lib/state.js";
 import { closeMilestoneIssue } from "../lib/close.js";
-import { GitLabProvider } from "../providers/gitlab.js";
-import { GitHubProvider } from "../providers/github.js";
-import type { IssueProvider } from "../providers/types.js";
+import { createProvider } from "../lib/provider-factory.js";
 import { join, dirname } from "node:path";
-
-function createProvider(config: Awaited<ReturnType<typeof loadConfig>>, exec: ExtensionAPI["exec"]): IssueProvider {
-  if (config.provider === "gitlab") {
-    return new GitLabProvider(exec, config.gitlab?.project_path);
-  }
-  return new GitHubProvider(exec, config.github?.repo);
-}
 
 /**
  * Parse milestone ID from args string.

@@ -429,3 +429,133 @@ describe("import subcommand wiring", () => {
     }
   });
 });
+
+// ── Re-scope command tests ──
+
+/**
+ * Set up milestone directory structure for re-scope tests.
+ */
+async function setupMilestoneForRescope(
+  tmpDir: string,
+  milestoneId: string,
+): Promise<void> {
+  const dir = join(tmpDir, ".gsd", "milestones", milestoneId);
+  await mkdir(dir, { recursive: true });
+
+  await writeFile(
+    join(dir, `${milestoneId}-CONTEXT.md`),
+    `# ${milestoneId}: Test\n\n## Project Description\n\nTest description.\n`,
+  );
+  await writeFile(
+    join(dir, `${milestoneId}-ROADMAP.md`),
+    `# Test Milestone\n\n## Slices\n\n- [ ] **S01: Setup** \`risk:low\` \`depends:[]\`\n`,
+  );
+}
+
+// Create response that simulates a successful issue creation for GitLab
+const GITLAB_CREATE_RESPONSE = JSON.stringify({
+  iid: 100,
+  title: "M001: Test Milestone",
+  state: "opened",
+  web_url: "https://gitlab.com/group/project/-/issues/100",
+  labels: [],
+  weight: null,
+  milestone: null,
+  assignees: [],
+  description: null,
+});
+
+describe("handleImport re-scope command", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "rescope-cmd-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    await rm(tmpDir, { recursive: true });
+  });
+
+  it("parses --rescope and --originals flags and executes on confirmation", async () => {
+    const exec = makeExec({ stdout: GITLAB_CREATE_RESPONSE });
+    await setupConfig(tmpDir, GITLAB_CONFIG);
+    await setupMilestoneForRescope(tmpDir, "M001");
+
+    const emit = vi.fn();
+    const pi = makePi({ exec, events: { emit } });
+    const ctx = makeCtx();
+    // confirm returns true
+    (ctx.ui.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const { handleImport } = await import("../import.js");
+    await handleImport("import --rescope M001 --originals 10,11,12", ctx, pi);
+
+    // Should have asked for confirmation
+    expect(ctx.ui.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("Close 3 original issue(s)"),
+    );
+
+    // Should have notified with re-scope result
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("Re-scope complete"),
+      "info",
+    );
+
+    // Should have emitted rescope-complete event
+    expect(emit).toHaveBeenCalledWith(
+      "gsd-issues:rescope-complete",
+      expect.objectContaining({
+        milestoneId: "M001",
+      }),
+    );
+  });
+
+  it("aborts re-scope when confirmation is declined", async () => {
+    const exec = makeExec({ stdout: GITLAB_CREATE_RESPONSE });
+    await setupConfig(tmpDir, GITLAB_CONFIG);
+    await setupMilestoneForRescope(tmpDir, "M001");
+
+    const pi = makePi({ exec });
+    const ctx = makeCtx();
+    // confirm returns false
+    (ctx.ui.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+
+    const { handleImport } = await import("../import.js");
+    await handleImport("import --rescope M001 --originals 10,11", ctx, pi);
+
+    // Should have asked for confirmation
+    expect(ctx.ui.confirm).toHaveBeenCalled();
+
+    // Should have notified abort
+    expect(ctx.ui.notify).toHaveBeenCalledWith("Re-scope aborted.", "info");
+
+    // No issue creation calls
+    // The exec mock should not be called for creating issues
+    // (only config reading doesn't use exec in this test)
+  });
+
+  it("parses --rescope= and --originals= equals syntax", async () => {
+    const exec = makeExec({ stdout: GITLAB_CREATE_RESPONSE });
+    await setupConfig(tmpDir, GITLAB_CONFIG);
+    await setupMilestoneForRescope(tmpDir, "M002");
+
+    const emit = vi.fn();
+    const pi = makePi({ exec, events: { emit } });
+    const ctx = makeCtx();
+    (ctx.ui.confirm as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+
+    const { handleImport } = await import("../import.js");
+    await handleImport("import --rescope=M002 --originals=5,6", ctx, pi);
+
+    expect(ctx.ui.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("Close 2 original issue(s)"),
+    );
+    expect(ctx.ui.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("M002"),
+    );
+  });
+});

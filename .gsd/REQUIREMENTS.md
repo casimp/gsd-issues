@@ -136,28 +136,6 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — gsd_issues_sync tool registered with milestone_id param. gsd_issues_close tool registered with milestone_id param (slice_id removed). gsd_issues_import tool registered with optional milestone, labels, state, assignee params. gsd_issues_pr tool registered with milestone_id, target_branch, dry_run params. All four workflow tools return structured ToolResult.
 - Notes: Tools registered via pi.registerTool() with TypeBox parameter schemas
 
-### R016 — Reverse flow: import issues and re-scope into milestones
-- Class: core-capability
-- Status: active
-- Description: Import existing issues from the tracker, use them as planning input, then close/re-weight the originals and create new milestone-scoped issues reflecting the planned work
-- Why it matters: Real workflows start with vague issues on the tracker — the extension should reshape them into right-sized milestones, not just mirror GSD's internal state
-- Source: user
-- Primary owning slice: none
-- Supporting slices: none
-- Validation: unmapped
-- Notes: Builds on M001's import (fetch + format). Adds the re-scope step: close originals, create new milestone issues.
-
-### R017 — Sub-issues for slice visibility (optional)
-- Class: differentiator
-- Status: deferred
-- Description: Optionally create sub-issues (GitLab) or task-list items (GitHub) under the milestone issue for each slice, giving visibility into what GSD did internally
-- Why it matters: Nice-to-have for teams that want to see the breakdown without making slices the primary tracking unit
-- Source: user
-- Primary owning slice: none
-- Supporting slices: none
-- Validation: unmapped
-- Notes: GitLab has native sub-issues. GitHub has task lists that can link to issues. Not a core requirement for now.
-
 ### R013 — npm packaging and distribution
 - Class: launchability
 - Status: active
@@ -193,7 +171,29 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — `syncMilestoneToIssue()` creates one issue per milestone with CONTEXT.md + ROADMAP.md description, milestoneId as localId, crash-safe persistence, dry-run, epic assignment (20 sync tests). `closeMilestoneIssue()` uses milestoneId for map lookup (8 close tests). ISSUE-MAP entries keyed by milestone ID (D029). Commands and tools operate at milestone level. 235 tests total. Runtime validation pending UAT.
 - Notes: Replaces M001's per-slice sync model. The underlying provider abstraction and CLI wrappers remain valid. Sync/close orchestration rebuilt around milestones.
 
+### R016 — Reverse flow: import issues and re-scope into milestones
+- Class: core-capability
+- Status: validated
+- Description: Import existing issues from the tracker, use them as planning input, then close/re-weight the originals and create new milestone-scoped issues reflecting the planned work
+- Why it matters: Real workflows start with vague issues on the tracker — the extension should reshape them into right-sized milestones, not just mirror GSD's internal state
+- Source: user
+- Primary owning slice: M002/S03
+- Supporting slices: none
+- Validation: contract — `rescopeIssues()` creates milestone issue via `syncMilestoneToIssue()`, closes originals best-effort with per-issue error collection. Double re-scope guard skips if milestone already mapped. Already-closed originals tolerated. Both command (`--rescope`/`--originals` with confirmation) and tool (`rescope_milestone_id`/`original_issue_ids` params) paths tested. 7 re-scope tests. `gsd-issues:rescope-complete` event emitted. Runtime validation pending UAT.
+- Notes: Builds on M001's import (fetch + format). Adds the re-scope step: close originals, create new milestone issues.
+
 ## Deferred
+
+### R017 — Sub-issues for slice visibility (optional)
+- Class: differentiator
+- Status: deferred
+- Description: Optionally create sub-issues (GitLab) or task-list items (GitHub) under the milestone issue for each slice, giving visibility into what GSD did internally
+- Why it matters: Nice-to-have for teams that want to see the breakdown without making slices the primary tracking unit
+- Source: user
+- Primary owning slice: none
+- Supporting slices: none
+- Validation: unmapped
+- Notes: GitLab has native sub-issues. GitHub has task lists that can link to issues. Not a core requirement for now.
 
 ### R020 — Keyboard shortcut (Ctrl+Alt+I)
 - Class: differentiator
@@ -249,7 +249,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R013 | launchability | active | M001/S06 | none | contract |
 | R014 | primary-user-loop | validated | M002/S02 | M002/S01 | contract |
 | R015 | core-capability | validated | M002/S02 | M002/S01 | contract |
-| R016 | core-capability | active | none | none | unmapped |
+| R016 | core-capability | validated | M002/S03 | none | contract |
 | R017 | differentiator | deferred | none | none | unmapped |
 | R020 | differentiator | deferred | none | none | unmapped |
 | R030 | continuity | out-of-scope | none | none | n/a |
@@ -257,7 +257,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 ## Coverage Summary
 
-- Active requirements: 14
+- Active requirements: 13
 - Mapped to slices: 13
-- Validated: 2
-- Unmapped active requirements: 1
+- Validated: 3
+- Unmapped active requirements: 0

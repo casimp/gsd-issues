@@ -4,15 +4,15 @@
 
 `gsd-issues` is a pi extension that bridges GSD's slice lifecycle with remote issue trackers (GitHub and GitLab). It replaces four ad-hoc GSD skills (`gitlab-sync`, `gitlab-import`, `gitlab-close`, `gitlab-setup`) with a proper TypeScript extension using pi's extension API for deterministic execution, lifecycle hooks, slash commands, and npm distribution.
 
-Three core workflows: sync (roadmap slices → remote issues), import (remote issues → LLM planning input), and close (auto-close on slice completion).
+Three core workflows: sync (roadmap milestones → remote issues), import (remote issues → LLM planning input with re-scope), close (PR-driven via `Closes #N`, manual fallback), and PR creation.
 
 ## Core Value
 
-When a GSD slice completes, the corresponding remote issue is automatically closed. When a roadmap is created, the user is prompted to create matching issues. The extension handles the plumbing so the agent never needs to interpret bash snippets from skill files.
+When a GSD milestone completes, a PR/MR is created with `Closes #N` so the issue auto-closes on merge. When a roadmap is created, the user is prompted to create a matching milestone issue. Import supports re-scoping existing issues into milestone-level issues. The extension handles the plumbing so the agent never needs to interpret bash snippets from skill files.
 
 ## Current State
 
-M001 (Issue Tracker Integration) complete — built the foundation: provider abstraction, config system, CLI wrappers, sync/close/import. M002 (Milestone-Level Issue Tracking and PR Workflow) is in progress. S01 complete — extended IssueProvider with `createPR()` on both providers, added `readIntegrationBranch()` for META.json reading, established milestone-keyed ISSUE-MAP convention. S02 complete — rewrote sync/close from per-slice to per-milestone, built PR creation pipeline (`createMilestonePR`) with `Closes #N`, removed tool_result auto-close hook, registered `gsd_issues_pr` tool. 235 tests, 15 files. S03 next — import re-scope and cleanup.
+M001 (Issue Tracker Integration) complete — built the foundation: provider abstraction, config system, CLI wrappers, sync/close/import. M002 (Milestone-Level Issue Tracking and PR Workflow) complete — all 3 slices delivered. S01 extended IssueProvider with `createPR()` on both providers, added `readIntegrationBranch()`, established milestone-keyed ISSUE-MAP convention. S02 rewrote sync/close from per-slice to per-milestone, built PR creation pipeline with `Closes #N`, removed tool_result auto-close hook. S03 added re-scope flow (`rescopeIssues()` creates milestone issue and closes originals best-effort), extracted `createProvider()` to shared module, cleaned up stale JSDoc. 242 tests, 15 files.
 
 ## Architecture / Key Patterns
 
@@ -33,4 +33,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 ## Milestone Sequence
 
 - [x] M001: Issue tracker integration — Provider abstraction, config, CLI wrappers (foundation)
-- [ ] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge
+- [x] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge

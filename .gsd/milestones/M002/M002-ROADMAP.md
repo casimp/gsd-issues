@@ -58,7 +58,7 @@ This milestone is complete only when all are true:
 - [x] **S02: Milestone-level sync and PR creation** `risk:medium` `depends:[S01]`
   > After this: `/issues sync` creates one issue per milestone, `/issues pr` creates a PR/MR from milestone branch to target with `Closes #N`, tool_result auto-close hook replaced with PR-driven close.
 
-- [ ] **S03: Import re-scope and cleanup** `risk:low` `depends:[S01,S02]`
+- [x] **S03: Import re-scope and cleanup** `risk:low` `depends:[S01,S02]`
   > After this: `/issues import` fetches issues, user can re-scope into milestone issues (close originals, create new), all commands/tools updated, tests migrated to milestone model.
 
 ## Boundary Map

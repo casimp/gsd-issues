@@ -15,29 +15,31 @@
 import type { ExtensionCommandContext, ExtensionAPI } from "../index.js";
 import { loadConfig } from "../lib/config.js";
 import { readGSDState } from "../lib/state.js";
-import { importIssues } from "../lib/import.js";
-import { GitLabProvider } from "../providers/gitlab.js";
-import { GitHubProvider } from "../providers/github.js";
-import type { IssueProvider, IssueFilter } from "../providers/types.js";
-
-function createProvider(config: Awaited<ReturnType<typeof loadConfig>>, exec: ExtensionAPI["exec"]): IssueProvider {
-  if (config.provider === "gitlab") {
-    return new GitLabProvider(exec, config.gitlab?.project_path);
-  }
-  return new GitHubProvider(exec, config.github?.repo);
-}
+import { importIssues, rescopeIssues } from "../lib/import.js";
+import { createProvider } from "../lib/provider-factory.js";
+import type { IssueFilter } from "../providers/types.js";
+import { findRoadmapPath } from "../lib/state.js";
+import { join, dirname } from "node:path";
 
 /**
- * Parse --milestone and --labels flags from args string.
+ * Parse --milestone, --labels, --rescope, and --originals flags from args string.
  *
  * Supports:
  *   import --milestone "Sprint 1" --labels bug,feature
  *   import --milestone=Sprint1 --labels=bug,feature
+ *   import --rescope M001 --originals 10,11,12
  */
-function parseImportFlags(args: string): { milestone?: string; labels?: string[] } {
+function parseImportFlags(args: string): {
+  milestone?: string;
+  labels?: string[];
+  rescope?: string;
+  originals?: number[];
+} {
   const parts = args.trim().split(/\s+/);
   let milestone: string | undefined;
   let labels: string[] | undefined;
+  let rescope: string | undefined;
+  let originals: number[] | undefined;
 
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i];
@@ -57,9 +59,25 @@ function parseImportFlags(args: string): { milestone?: string; labels?: string[]
     } else if (part.startsWith("--labels=")) {
       labels = part.slice("--labels=".length).split(",").map((l) => l.trim()).filter(Boolean);
     }
+
+    // --rescope
+    if (part === "--rescope" && i + 1 < parts.length) {
+      rescope = parts[i + 1];
+      i++;
+    } else if (part.startsWith("--rescope=")) {
+      rescope = part.slice("--rescope=".length);
+    }
+
+    // --originals
+    if (part === "--originals" && i + 1 < parts.length) {
+      originals = parts[i + 1].split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+      i++;
+    } else if (part.startsWith("--originals=")) {
+      originals = part.slice("--originals=".length).split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => !isNaN(n));
+    }
   }
 
-  return { milestone, labels };
+  return { milestone, labels, rescope, originals };
 }
 
 /**
@@ -84,6 +102,65 @@ export async function handleImport(
 
   // Parse flags
   const flags = parseImportFlags(args);
+
+  // Re-scope mode: when both --rescope and --originals present
+  if (flags.rescope && flags.originals && flags.originals.length > 0) {
+    const milestoneId = flags.rescope;
+
+    if (!ctx.hasUI) {
+      ctx.ui.notify("Re-scope requires interactive confirmation.", "error");
+      return;
+    }
+
+    const confirmed = await ctx.ui.confirm(
+      `Close ${flags.originals.length} original issue(s) and create milestone issue for ${milestoneId}?`,
+    );
+
+    if (!confirmed) {
+      ctx.ui.notify("Re-scope aborted.", "info");
+      return;
+    }
+
+    const provider = createProvider(config, pi.exec);
+    const roadmapPath = findRoadmapPath(cwd, milestoneId);
+    const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+
+    try {
+      const result = await rescopeIssues({
+        provider,
+        config,
+        milestoneId,
+        originalIssueIds: flags.originals,
+        cwd,
+        mapPath,
+        exec: pi.exec,
+        emit: pi.events.emit.bind(pi.events),
+      });
+
+      if (result.skipped) {
+        ctx.ui.notify(`Milestone ${milestoneId} is already mapped. Re-scope skipped.`, "info");
+        return;
+      }
+
+      const lines: string[] = [];
+      lines.push(`Re-scope complete for ${milestoneId}:`);
+      if (result.created) {
+        lines.push(`  Created issue #${result.created.issueId} (${result.created.url})`);
+      }
+      lines.push(`  Closed originals: ${result.closedOriginals.length}`);
+      if (result.closeErrors.length > 0) {
+        lines.push(`  Close errors: ${result.closeErrors.length}`);
+        for (const e of result.closeErrors) {
+          lines.push(`    #${e.issueId}: ${e.error}`);
+        }
+      }
+      ctx.ui.notify(lines.join("\n"), "info");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ctx.ui.notify(`Re-scope failed: ${msg}`, "error");
+    }
+    return;
+  }
 
   // Resolve milestone: from flags, config, or GSD state
   let milestoneTitle = flags.milestone ?? config.milestone;

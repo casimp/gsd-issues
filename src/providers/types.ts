@@ -1,7 +1,8 @@
 /**
  * Core types for gsd-issues provider abstraction.
  *
- * These types define the contract consumed by S02–S05.
+ * These types define the contract consumed by the sync, close, import,
+ * and PR pipelines.
  * Provider implementations (GitLab, GitHub) implement IssueProvider.
  * All CLI interactions go through ExecFn (matching pi.exec() signature).
  */
@@ -123,7 +124,7 @@ export interface IssueProvider {
 // ── Issue map persistence ──
 
 export interface IssueMapEntry {
-  /** Local identifier (e.g. slice ID like "S01") */
+  /** Local identifier — milestone ID (e.g. "M001") */
   localId: string;
   /** Provider issue ID */
   issueId: number;
