@@ -33,6 +33,8 @@ function makeCtx(uiOverrides: Partial<ExtensionUI> = {}): ExtensionCommandContex
   return {
     ui: makeUI(uiOverrides),
     hasUI: true,
+    waitForIdle: vi.fn(async () => {}),
+    newSession: vi.fn(async () => ({ cancelled: false })),
   };
 }
 
@@ -52,6 +54,8 @@ function makePi(overrides: Partial<ExtensionAPI> = {}): ExtensionAPI {
     registerTool: vi.fn(),
     exec: makeExec(),
     events: { emit: vi.fn() },
+    sendMessage: vi.fn(),
+    on: vi.fn(),
     ...overrides,
   };
 }

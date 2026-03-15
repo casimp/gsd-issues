@@ -23,6 +23,8 @@ function makeCtx(): ExtensionCommandContext {
       confirm: vi.fn(async () => true),
     },
     hasUI: true,
+    waitForIdle: vi.fn(async () => {}),
+    newSession: vi.fn(async () => ({ cancelled: false })),
   };
 }
 
@@ -42,6 +44,8 @@ function makePi(overrides: Partial<ExtensionAPI> = {}): ExtensionAPI {
     registerTool: vi.fn(),
     exec: makeExec(),
     events: { emit: vi.fn() },
+    sendMessage: vi.fn(),
+    on: vi.fn(),
     ...overrides,
   };
 }
@@ -266,13 +270,16 @@ describe("tool_result hook removal", () => {
   it("extension does not register a tool_result handler (hook removed)", async () => {
     const registerTool = vi.fn();
     const registerCommand = vi.fn();
-    const pi = makePi({ registerTool, registerCommand });
+    const on = vi.fn();
+    const pi = makePi({ registerTool, registerCommand, on });
 
     const extensionFactory = (await import("../../index.js")).default;
     extensionFactory(pi);
 
-    // ExtensionAPI no longer has .on() — the hook is removed.
-    // Verify by checking that no 'on' property exists on the API shape.
-    expect("on" in pi).toBe(false);
+    // Verify that no 'tool_result' handler was registered via pi.on()
+    const toolResultCalls = on.mock.calls.filter(
+      (call: unknown[]) => call[0] === "tool_result",
+    );
+    expect(toolResultCalls).toHaveLength(0);
   });
 });

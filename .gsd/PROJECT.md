@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR Workflow) both complete. M003 (Milestone Sizing and Auto-Flow Orchestration) in progress — S01 complete, S02 next. The extension operates at milestone level for all workflows. Config extended with `max_slices_per_milestone` and `sizing_mode` fields. `validateMilestoneSize()` validates slice count against configured limits. 266 contract tests across 16 files. Runtime UAT on real remotes is the remaining validation gap.
+M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR Workflow) both complete. M003 (Milestone Sizing and Auto-Flow Orchestration) in progress — S01 and S02 complete, S03 (README documentation) remaining. The extension now includes `/issues auto` command and `gsd_issues_auto` tool driving full milestone lifecycle via pi.sendMessage/newSession with mutual exclusion, split retry, and phase-based state machine. 309 contract tests across 18 files. Runtime UAT on real remotes is the remaining validation gap.
 
 ## Architecture / Key Patterns
 
@@ -24,8 +24,9 @@ M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR
 - **Mapping:** `ISSUE-MAP.json` per milestone in `.gsd/milestones/{MID}/`, crash-safe writes (save after each creation), localId holds milestone ID
 - **Close model:** PR-driven via `Closes #N` in PR body (platform auto-close on merge). Manual `/issues close` as fallback. No lifecycle hooks.
 - **Event bus:** Emits `gsd-issues:sync-complete`, `gsd-issues:close-complete`, `gsd-issues:pr-complete`, `gsd-issues:rescope-complete`, `gsd-issues:import-complete` on `pi.events`
-- **Tools:** Four LLM-callable tools registered via `pi.registerTool()` with TypeBox schemas (sync, close, import, pr)
-- **Commands:** `/issues` with subcommands: setup, sync, import, close, pr, status (status stubbed)
+- **Tools:** Five LLM-callable tools registered via `pi.registerTool()` with TypeBox schemas (sync, close, import, pr, auto)
+- **Commands:** `/issues` with subcommands: setup, sync, import, close, pr, auto, status (status stubbed)
+- **Auto-flow:** Phase-based state machine (`import → plan → validate-size → [split] → sync → execute → pr → done`) with injected deps, mutual exclusion via lock files, crash recovery via PID checks
 - **Distribution:** npm package with pi manifest, installed via pi's package manager
 
 ## Capability Contract

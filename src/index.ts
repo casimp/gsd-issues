@@ -2,9 +2,9 @@
  * gsd-issues extension entry point.
  *
  * Registers the `/issues` command with subcommand routing and
- * the `gsd_issues_sync`, `gsd_issues_close`, and `gsd_issues_pr` LLM-callable tools.
+ * the `gsd_issues_sync`, `gsd_issues_close`, `gsd_issues_pr`, and `gsd_issues_auto` LLM-callable tools.
  *
- * Subcommands: setup, sync, import, close, pr, status.
+ * Subcommands: setup, sync, import, close, pr, auto, status.
  *
  * Diagnostics:
  * - Tool registration logged at load time
@@ -12,6 +12,8 @@
  * - Config/provider errors surface with actionable messages
  * - Close result: gsd-issues:close-complete event emitted on success
  * - PR result: gsd-issues:pr-complete event emitted on success
+ * - Auto: agent_end handler no-ops when auto inactive (isAutoActive guard)
+ * - Auto: gsd-issues:auto-phase events emitted on phase transitions
  */
 
 import { Type, type Static } from "@sinclair/typebox";
@@ -42,6 +44,23 @@ export interface ExtensionUI {
 }
 
 export interface ExtensionCommandContext {
+  ui: ExtensionUI;
+  hasUI: boolean;
+  /** Wait for the agent to finish streaming. */
+  waitForIdle(): Promise<void>;
+  /** Start a new session. Returns { cancelled: true } if the user aborted. */
+  newSession(options?: {
+    parentSession?: string;
+    setup?: (sessionManager: unknown) => Promise<void>;
+  }): Promise<{ cancelled: boolean }>;
+}
+
+/**
+ * Minimal context available to lifecycle hooks (e.g. agent_end).
+ * Does NOT include session-control methods like newSession/waitForIdle —
+ * those live on ExtensionCommandContext only.
+ */
+export interface ExtensionContext {
   ui: ExtensionUI;
   hasUI: boolean;
 }
@@ -80,13 +99,20 @@ export interface ExtensionAPI {
   events: {
     emit(event: string, payload: unknown): void;
   };
+  /** Send a custom message to the session. */
+  sendMessage<T = unknown>(
+    message: { customType: string; content: string | string[]; display?: boolean; details?: T },
+    options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" },
+  ): void;
+  /** Register an event handler. */
+  on(event: string, handler: (...args: unknown[]) => void | Promise<void>): void;
 }
 
 // ── Provider instantiation via shared factory ──
 
 // ── Subcommand list ──
 
-const SUBCOMMANDS = ["setup", "sync", "import", "close", "pr", "status"] as const;
+const SUBCOMMANDS = ["setup", "sync", "import", "close", "pr", "status", "auto"] as const;
 
 // ── Extension factory ──
 
@@ -362,9 +388,52 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
+  // Register the auto tool for LLM callers
+  const AutoToolSchema = Type.Object({
+    milestone_id: Type.Optional(Type.String({ description: "Milestone ID to run the auto-flow for (e.g. M001). Resolved from config or GSD state if omitted." })),
+  });
+  type AutoToolParams = Static<typeof AutoToolSchema>;
+
+  pi.registerTool({
+    name: "gsd_issues_auto",
+    label: "Auto Flow",
+    description:
+      "Start the auto-flow orchestration for a GSD milestone. Drives the full lifecycle — import, plan, size-check, split, sync, execute, PR — using multiple agent sessions.",
+    parameters: AutoToolSchema,
+    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, ctx: ExtensionCommandContext): Promise<ToolResult> {
+      const typedParams = params as AutoToolParams;
+      // Build args string to reuse command handler logic
+      const args = typedParams.milestone_id ? `auto ${typedParams.milestone_id}` : "auto";
+
+      const { handleAuto } = await import("./commands/auto.js");
+      await handleAuto(args, ctx, pi);
+
+      // handleAuto reports via ctx.ui.notify, but tool needs a ToolResult
+      return {
+        content: [{ type: "text", text: "Auto-flow initiated. Progress will be driven via agent sessions." }],
+      };
+    },
+  });
+
+  // Register agent_end handler for auto-flow phase advancement
+  pi.on("agent_end", async () => {
+    const { isAutoActive, advancePhase } = await import("./lib/auto.js");
+    const cwd = process.cwd();
+
+    // No-op when auto is not active — avoids interfering with GSD auto's own agent_end handler
+    if (!isAutoActive(cwd)) return;
+
+    const { getStashedContext, buildAutoDeps } = await import("./commands/auto.js");
+    const stashed = getStashedContext();
+    if (!stashed) return;
+
+    const deps = buildAutoDeps(stashed.ctx, stashed.pi);
+    await advancePhase(deps);
+  });
+
   pi.registerCommand("issues", {
     description:
-      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|status",
+      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|auto|status",
 
     getArgumentCompletions(prefix: string) {
       const trimmed = prefix.trim();
@@ -384,7 +453,7 @@ export default function (pi: ExtensionAPI): void {
 
       if (!subcommand) {
         ctx.ui.notify(
-          "Usage: /issues <setup|sync|import|close|pr|status>",
+          "Usage: /issues <setup|sync|import|close|pr|auto|status>",
           "info",
         );
         return;
@@ -422,6 +491,12 @@ export default function (pi: ExtensionAPI): void {
           return;
         }
 
+        case "auto": {
+          const { handleAuto } = await import("./commands/auto.js");
+          await handleAuto(args, ctx, pi);
+          return;
+        }
+
         case "status":
           ctx.ui.notify(
             `/issues ${subcommand} is not yet implemented.`,
@@ -431,7 +506,7 @@ export default function (pi: ExtensionAPI): void {
 
         default:
           ctx.ui.notify(
-            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, pr, status.`,
+            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, pr, auto, status.`,
             "warning",
           );
       }

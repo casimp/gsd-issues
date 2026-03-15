@@ -44,7 +44,12 @@ function makeCtx(
   ui: ExtensionUI,
   hasUI = true,
 ): ExtensionCommandContext {
-  return { ui, hasUI };
+  return {
+    ui,
+    hasUI,
+    waitForIdle: vi.fn(async () => {}),
+    newSession: vi.fn(async () => ({ cancelled: false })),
+  };
 }
 
 async function readConfig(cwd: string) {

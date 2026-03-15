@@ -167,7 +167,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Primary owning slice: M003/S01
 - Supporting slices: M003/S02
 - Validation: contract — `validateMilestoneSize()` returns typed `SizingResult` with valid/sliceCount/limit/mode/milestoneId. Handles no-limit (skip), under/at/over limit, 0 slices, missing roadmap (throws). 9 tests with real temp-dir roadmap files.
-- Notes: Integration into orchestration loop deferred to S02
+- Notes: Integration into orchestration loop completed in S02 (validate-size phase calls validateMilestoneSize)
 
 ### R021 — Auto-flow orchestration
 - Class: core-capability
@@ -177,7 +177,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M003/S02
 - Supporting slices: none
-- Validation: unmapped — deferred to M003/S02
+- Validation: contract — 43 tests cover phase-based state machine (all 8 phases), split retry (strict 3x, best_try warn), mutual exclusion (GSD lock, own stale lock, PID liveness), lock/state persistence, newSession cancellation, concurrent dispatch guard, prompt construction, command handler wiring, agent_end handler, tool registration. Runtime UAT pending.
 - Notes: Depends on S01's config and sizing validation
 
 ## Validated
@@ -287,7 +287,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R018 | core-capability | active | M003/S01 | M003/S02 | contract |
 | R019 | core-capability | active | M003/S01 | M003/S02 | contract |
 | R020 | differentiator | deferred | none | none | unmapped |
-| R021 | core-capability | active | M003/S02 | none | unmapped |
+| R021 | core-capability | active | M003/S02 | none | contract |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |
 
