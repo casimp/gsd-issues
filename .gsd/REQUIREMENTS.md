@@ -26,27 +26,27 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — Config type system with structural validation (24 tests), interactive setup with CLI discovery and fallback paths (11 tests). loadConfig/saveConfig round-trip, validateConfig catches missing/invalid fields, setup handles both providers with auth failure and empty milestone fallbacks. Consumed by S03 sync workflow. Runtime validation pending UAT.
 - Notes: Setup command discovers repo patterns (milestones, labels, branches) and walks user through config
 
-### R003 — Sync: roadmap slices → remote issues
+### R003 — Sync: milestones → remote issues
 - Class: primary-user-loop
 - Status: active
-- Description: Create one remote issue per roadmap slice with milestone, assignee, labels, and provider-specific metadata
-- Why it matters: Core workflow — maps GSD planning to issue tracker for visibility and tracking
+- Description: Create one remote issue per GSD milestone with title, description, assignee, labels, and provider-specific metadata
+- Why it matters: Core workflow — maps GSD planning to issue tracker for visibility and tracking. The milestone is the meaningful external unit.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: contract — Full sync pipeline tested: creates issues for unmapped slices, skips mapped, crash-safe map persistence, dry-run preview. 33 sync-related tests. UAT pending with real remotes.
-- Notes: Must support re-running safely (skip already-mapped slices)
+- Validation: contract (M001, slice-level) — M001 proved the sync pipeline mechanics (create, skip mapped, crash-safe persistence, dry-run). Needs rework to operate at milestone level instead of slice level in M002.
+- Notes: Must support re-running safely (skip already-mapped milestones). M001 implemented per-slice sync — M002 will rework to per-milestone.
 
-### R004 — Close: auto-close on slice completion
+### R004 — Close: issue closes on milestone PR merge
 - Class: primary-user-loop
 - Status: active
-- Description: Automatically close the mapped remote issue when a slice's summary file is written, via tool_result lifecycle hook
-- Why it matters: Eliminates the manual step of closing issues — the extension handles it deterministically
+- Description: The milestone's remote issue closes when the milestone PR/MR merges, via `Closes #N` in the PR body. Fallback: manual `/issues close` command.
+- Why it matters: Close should happen through the natural review/merge flow, not through a lifecycle hook that fires before review
 - Source: user
 - Primary owning slice: M001/S04
 - Supporting slices: none
-- Validation: contract — closeSliceIssue() orchestration tested (8 tests), tool_result hook with write-tool matching and S##-SUMMARY.md path pattern tested (14 tests), /issues close command and gsd_issues_close tool both delegate to shared close function, edge cases covered (already-closed, missing map, missing config, non-summary writes). 158 tests total, 0 regressions. UAT pending with real remotes.
-- Notes: Hook watches for S##-SUMMARY.md writes
+- Validation: contract (M001, slice-level) — M001 proved close orchestration and provider closeIssue() calls. Needs rework: close via PR merge (platform-handled) replaces tool_result hook.
+- Notes: M001 implemented auto-close on slice summary write. M002 replaces this with close-on-merge via `Closes #N` in PR body.
 
 ### R005 — Import: fetch issues for LLM planning
 - Class: core-capability
@@ -59,16 +59,16 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — importIssues() formats issues from both providers with weight sorting, description truncation (500 chars), empty list handling, and gsd-issues:import-complete event. /issues import command with --milestone/--labels flag parsing. gsd_issues_import tool with TypeBox schema. 30 tests (17 import + 13 command). Both providers populate extended Issue fields (weight, milestone, assignee, description).
 - Notes: Read-only operation. Extension fetches/formats, LLM interprets.
 
-### R006 — GitLab extras (epics, weight, labels, reorg)
+### R006 — GitLab extras (epics, weight, labels)
 - Class: integration
 - Status: active
-- Description: Support GitLab-specific features: epic assignment via REST API, weight in hours (S/M/L size-based), done labels (T::Done), absorbed ticket reorganisation with close/comment/weight reconciliation
+- Description: Support GitLab-specific features: epic assignment via REST API, weight, done labels (T::Done), labels
 - Why it matters: These are actively used in the GitLab workflow — not optional metadata
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: contract — Epic assignment via REST API (glab api), weight mapping (fibonacci/linear from risk level), labels from config. 22 sync tests cover GitLab-specific paths. Done label (T::Done default) applied on close via config-driven doneLabel option (S04). UAT pending.
-- Notes: Epic assignment requires REST API (not CLI flag). Weight strategy and reorganisation config from predecessor skills.
+- Validation: contract (M001) — Epic assignment via REST API, weight mapping, labels from config, done label on close. Needs reframing: these features apply to milestone-level issues in M002.
+- Notes: Epic assignment requires REST API (not CLI flag). Weight and labels apply to the milestone issue.
 
 ### R007 — GitHub support (milestones, labels, projects)
 - Class: integration
@@ -78,29 +78,29 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: M001/S04
-- Validation: contract — Milestone and label assignment passed through CreateIssueOpts, GitHub provider path tested in sync. Close reason passed through config-driven option on close (S04). UAT pending.
+- Validation: contract (M001) — Milestone and label assignment, close reason. Applies to milestone-level issues in M002.
 - Notes: No native epics or weight — use milestones, labels, projects
 
 ### R008 — ISSUE-MAP.json mapping persistence
 - Class: continuity
 - Status: active
-- Description: Persist slice-to-issue mapping in provider-agnostic ISSUE-MAP.json per milestone
-- Why it matters: Mapping enables close workflow and prevents duplicate issue creation on re-sync
+- Description: Persist milestone-to-issue mapping in provider-agnostic ISSUE-MAP.json
+- Why it matters: Mapping enables close workflow, PR creation, and prevents duplicate issue creation on re-sync
 - Source: user
 - Primary owning slice: M001/S01
 - Supporting slices: M001/S03, M001/S04
-- Validation: contract — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling, missing file returns []. Crash-safe persistence during sync (save after each creation). Consumed by close to resolve slice→issue mapping (S04). Runtime validation pending UAT.
+- Validation: contract (M001) — loadIssueMap/saveIssueMap round-trip tested, structural validation, corrupt file handling. M002 reworks the mapping unit from slice to milestone.
 - Notes: Clean break from predecessor GITLAB-MAP.json — new format only
 
 ### R009 — Sync surfaced as prompted step in GSD flow
 - Class: primary-user-loop
 - Status: active
-- Description: When a roadmap is written, surface a confirmation prompt ("Ready to create issues for these slices?") before creating remote issues
+- Description: When a milestone is planned, surface a confirmation prompt ("Create an issue for this milestone?") before creating the remote issue
 - Why it matters: Creating remote issues is an outward-facing action that should be deliberate, but integrated into the natural flow
 - Source: user
 - Primary owning slice: M001/S03
 - Supporting slices: none
-- Validation: contract — Confirmation flow implemented in handleSync: preview shows slices, ctx.ui.confirm() gates issue creation. Tool mode skips confirmation (D022). 11 command tests cover confirm/decline flows. UAT pending.
+- Validation: contract (M001, slice-level) — Confirmation flow implemented. Needs reframing for milestone-level issue creation in M002.
 - Notes: Not manual-only, not auto — prompted step in the workflow
 
 ### R010 — Event bus emissions for composability
@@ -238,13 +238,13 @@ This file is the explicit capability and coverage contract for gsd-issues.
 |---|---|---|---|---|---|
 | R001 | core-capability | active | M001/S01 | none | contract |
 | R002 | core-capability | active | M001/S02 | none | unmapped |
-| R003 | primary-user-loop | active | M001/S03 | none | unmapped |
-| R004 | primary-user-loop | active | M001/S04 | none | unmapped |
+| R003 | primary-user-loop | active | M001/S03 | none | contract (slice-level, needs rework) |
+| R004 | primary-user-loop | active | M001/S04 | none | contract (slice-level, needs rework) |
 | R005 | core-capability | active | M001/S05 | none | unmapped |
-| R006 | integration | active | M001/S03 | M001/S04 | unmapped |
-| R007 | integration | active | M001/S03 | M001/S04 | unmapped |
-| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | contract |
-| R009 | primary-user-loop | active | M001/S03 | none | unmapped |
+| R006 | integration | active | M001/S03 | M001/S04 | contract (needs milestone reframing) |
+| R007 | integration | active | M001/S03 | M001/S04 | contract (needs milestone reframing) |
+| R008 | continuity | active | M001/S01 | M001/S03, M001/S04 | contract (needs milestone reframing) |
+| R009 | primary-user-loop | active | M001/S03 | none | contract (needs milestone reframing) |
 | R010 | integration | active | M001/S04 | M001/S03, M001/S05 | unmapped |
 | R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |
 | R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | unmapped |
