@@ -122,6 +122,69 @@ export async function readGSDState(
   return { milestoneId: match[1] };
 }
 
+// ── Integration branch reader ──
+
+/**
+ * Valid branch name pattern — matches GSD core's VALID_BRANCH_NAME.
+ * Allows alphanumeric, underscore, hyphen, forward slash, and dot.
+ */
+export const VALID_BRANCH_NAME = /^[a-zA-Z0-9_\-\/.]+$/;
+
+/**
+ * Read the integration branch from a milestone's META.json file.
+ *
+ * Path: `.gsd/milestones/{MID}/{MID}-META.json`
+ *
+ * Returns `null` on:
+ * - Missing META.json file (ENOENT)
+ * - Corrupt/unparseable JSON
+ * - Missing `integrationBranch` field
+ * - Empty or whitespace-only branch name
+ * - Branch name failing VALID_BRANCH_NAME validation
+ *
+ * Only unexpected I/O errors propagate as thrown exceptions.
+ */
+export async function readIntegrationBranch(
+  cwd: string,
+  milestoneId: string,
+): Promise<string | null> {
+  const metaPath = join(
+    cwd,
+    ".gsd",
+    "milestones",
+    milestoneId,
+    `${milestoneId}-META.json`,
+  );
+
+  let raw: string;
+  try {
+    raw = await readFile(metaPath, "utf-8");
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (typeof data !== "object" || data === null) return null;
+
+  const branch = (data as Record<string, unknown>).integrationBranch;
+  if (typeof branch !== "string") return null;
+
+  const trimmed = branch.trim();
+  if (trimmed.length === 0) return null;
+  if (!VALID_BRANCH_NAME.test(trimmed)) return null;
+
+  return trimmed;
+}
+
 // ── Path helper ──
 
 /**

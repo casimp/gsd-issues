@@ -71,6 +71,7 @@ function mockProvider(
     closeIssue: vi.fn(async () => {}),
     listIssues: vi.fn(async () => []),
     addLabels: vi.fn(async () => {}),
+    createPR: vi.fn(async () => ({ url: "", number: 0 })),
   };
 }
 
@@ -492,6 +493,7 @@ describe("syncSlicesToIssues", () => {
       closeIssue: vi.fn(async () => {}),
       listIssues: vi.fn(async () => []),
       addLabels: vi.fn(async () => {}),
+      createPR: vi.fn(async () => ({ url: "", number: 0 })),
     };
 
     const config = makeConfig({

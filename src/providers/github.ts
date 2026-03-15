@@ -12,11 +12,16 @@ import type {
   CreateIssueOpts,
   CloseIssueOpts,
   IssueFilter,
+  CreatePROpts,
+  PRResult,
 } from "./types.js";
 import { ProviderError } from "./types.js";
 
 /** Regex to extract issue number from a GitHub issue URL: .../issues/42 */
 const ISSUE_URL_RE = /\/issues\/(\d+)/;
+
+/** Regex to extract PR number from a GitHub PR URL: .../pull/42 */
+const PR_URL_RE = /\/pull\/(\d+)/;
 
 /** Shape returned by `gh issue list --json ...` */
 interface GhListItem {
@@ -146,6 +151,56 @@ export class GitHubProvider implements IssueProvider {
       "--add-label",
       labels.join(","),
     ]);
+  }
+
+  async createPR(opts: CreatePROpts): Promise<PRResult> {
+    let body = opts.body;
+    if (opts.closesIssueId !== undefined) {
+      body += `\n\nCloses #${opts.closesIssueId}`;
+    }
+
+    const args = [
+      "pr", "create",
+      "--title", opts.title,
+      "--body", body,
+      "--base", opts.baseBranch,
+      "--head", opts.headBranch,
+    ];
+
+    if (opts.draft) {
+      args.push("--draft");
+    }
+
+    const result = await this.run("createPR", args);
+
+    const match = PR_URL_RE.exec(result.stdout);
+    if (!match) {
+      throw new ProviderError(
+        `Failed to parse PR number from gh output: ${result.stdout.trim()}`,
+        "github",
+        "createPR",
+        0,
+        result.stderr,
+        `gh ${args.join(" ")}`,
+      );
+    }
+
+    const prNumber = parseInt(match[1], 10);
+    if (!Number.isFinite(prNumber) || prNumber <= 0) {
+      throw new ProviderError(
+        `Parsed PR number is not a positive integer: ${match[1]}`,
+        "github",
+        "createPR",
+        0,
+        result.stderr,
+        `gh ${args.join(" ")}`,
+      );
+    }
+
+    const urlLine = result.stdout.split("\n").find((l) => l.includes("/pull/"));
+    const url = urlLine?.trim() ?? `https://github.com/owner/repo/pull/${prNumber}`;
+
+    return { url, number: prNumber };
   }
 
   /** Execute a gh command, throwing ProviderError on non-zero exit. */

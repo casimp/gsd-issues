@@ -310,4 +310,143 @@ describe("GitHubProvider", () => {
       expect(exec.mock.calls[0][2]).toEqual({ cwd: "/my/project" });
     });
   });
+
+  describe("createPR", () => {
+    it("creates PR with all fields and parses URL and number from stdout", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://github.com/owner/repo/pull/17\n"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      const result = await provider.createPR({
+        title: "Add feature",
+        body: "Description here",
+        headBranch: "feature-branch",
+        baseBranch: "main",
+      });
+
+      expect(result.url).toBe("https://github.com/owner/repo/pull/17");
+      expect(result.number).toBe(17);
+
+      const args = exec.mock.calls[0][1];
+      expect(args).toContain("--title");
+      expect(args[args.indexOf("--title") + 1]).toBe("Add feature");
+      expect(args).toContain("--body");
+      expect(args[args.indexOf("--body") + 1]).toBe("Description here");
+      expect(args).toContain("--base");
+      expect(args[args.indexOf("--base") + 1]).toBe("main");
+      expect(args).toContain("--head");
+      expect(args[args.indexOf("--head") + 1]).toBe("feature-branch");
+    });
+
+    it("appends Closes #N when closesIssueId is provided", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://github.com/o/r/pull/5\n"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      await provider.createPR({
+        title: "Fix bug",
+        body: "Fixes the thing",
+        headBranch: "fix",
+        baseBranch: "main",
+        closesIssueId: 42,
+      });
+
+      const args = exec.mock.calls[0][1];
+      const bodyIdx = args.indexOf("--body") + 1;
+      expect(args[bodyIdx]).toBe("Fixes the thing\n\nCloses #42");
+    });
+
+    it("passes --draft flag when draft is true", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://github.com/o/r/pull/3\n"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      await provider.createPR({
+        title: "WIP",
+        body: "",
+        headBranch: "wip",
+        baseBranch: "main",
+        draft: true,
+      });
+
+      const args = exec.mock.calls[0][1];
+      expect(args).toContain("--draft");
+    });
+
+    it("omits --draft flag when draft is not set", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://github.com/o/r/pull/1\n"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      await provider.createPR({
+        title: "Ready",
+        body: "",
+        headBranch: "feature",
+        baseBranch: "main",
+      });
+
+      const args = exec.mock.calls[0][1];
+      expect(args).not.toContain("--draft");
+    });
+
+    it("throws ProviderError on non-zero exit code", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        fail(1, "pull request create failed"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      try {
+        await provider.createPR({
+          title: "Fail",
+          body: "",
+          headBranch: "x",
+          baseBranch: "main",
+        });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ProviderError);
+        const pe = err as ProviderError;
+        expect(pe.provider).toBe("github");
+        expect(pe.operation).toBe("createPR");
+        expect(pe.exitCode).toBe(1);
+        expect(pe.stderr).toBe("pull request create failed");
+      }
+    });
+
+    it("throws ProviderError when URL cannot be parsed from stdout", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("Unexpected output with no PR URL\n"),
+      );
+      const provider = new GitHubProvider(exec);
+
+      await expect(
+        provider.createPR({
+          title: "Bad",
+          body: "",
+          headBranch: "x",
+          baseBranch: "main",
+        }),
+      ).rejects.toThrow(ProviderError);
+    });
+
+    it("passes cwd through when projectPath is set", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://github.com/o/r/pull/8\n"),
+      );
+      const provider = new GitHubProvider(exec, "/my/project");
+
+      await provider.createPR({
+        title: "Test",
+        body: "",
+        headBranch: "branch",
+        baseBranch: "main",
+      });
+
+      expect(exec.mock.calls[0][2]).toEqual({ cwd: "/my/project" });
+    });
+  });
 });

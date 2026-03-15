@@ -4,6 +4,8 @@ import {
   parseRoadmapSlices,
   readGSDState,
   findRoadmapPath,
+  readIntegrationBranch,
+  VALID_BRANCH_NAME,
 } from "../state.js";
 
 // ── parseRoadmapSlices ──
@@ -271,5 +273,82 @@ describe("findRoadmapPath", () => {
         "M001-eh88as-ROADMAP.md",
       ),
     );
+  });
+});
+
+// ── readIntegrationBranch ──
+
+describe("readIntegrationBranch", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    tmpDir = await mkdtemp(join(tmpdir(), "gsd-intbranch-test-"));
+  });
+
+  afterEach(async () => {
+    const { rm } = await import("node:fs/promises");
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeMeta(milestoneId: string, content: string) {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const dir = join(tmpDir, ".gsd", "milestones", milestoneId);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${milestoneId}-META.json`), content, "utf-8");
+  }
+
+  it("reads valid integration branch from well-formed META.json", async () => {
+    await writeMeta("M001", JSON.stringify({ integrationBranch: "main" }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBe("main");
+  });
+
+  it("returns null when META.json doesn't exist", async () => {
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when META.json contains invalid JSON", async () => {
+    await writeMeta("M001", "{ this is not json !!!");
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when integrationBranch field is missing", async () => {
+    await writeMeta("M001", JSON.stringify({ otherField: "value" }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when integrationBranch is an empty string", async () => {
+    await writeMeta("M001", JSON.stringify({ integrationBranch: "" }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("returns null when integrationBranch contains invalid characters", async () => {
+    await writeMeta("M001", JSON.stringify({ integrationBranch: "my branch; rm -rf /" }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
+  });
+
+  it("works with milestone IDs that have random suffixes", async () => {
+    await writeMeta("M001-eh88as", JSON.stringify({ integrationBranch: "develop" }));
+    const result = await readIntegrationBranch(tmpDir, "M001-eh88as");
+    expect(result).toBe("develop");
+  });
+
+  it("accepts branch names with slashes and dots", async () => {
+    await writeMeta("M001", JSON.stringify({ integrationBranch: "feature/v2.0/release" }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBe("feature/v2.0/release");
+  });
+
+  it("returns null when integrationBranch is whitespace-only", async () => {
+    await writeMeta("M001", JSON.stringify({ integrationBranch: "   " }));
+    const result = await readIntegrationBranch(tmpDir, "M001");
+    expect(result).toBeNull();
   });
 });

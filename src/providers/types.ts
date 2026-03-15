@@ -78,6 +78,26 @@ export interface IssueFilter {
   assignee?: string;
 }
 
+// ── PR/MR types ──
+
+export interface CreatePROpts {
+  title: string;
+  body: string;
+  headBranch: string;
+  baseBranch: string;
+  /** If set, appends "Closes #N" to the PR/MR body */
+  closesIssueId?: number;
+  /** Create as a draft PR/MR */
+  draft?: boolean;
+}
+
+export interface PRResult {
+  /** Full URL to the PR/MR in the web UI */
+  url: string;
+  /** PR number (GitHub) or MR IID (GitLab) */
+  number: number;
+}
+
 // ── IssueProvider interface ──
 
 export interface IssueProvider {
@@ -95,6 +115,9 @@ export interface IssueProvider {
 
   /** Add labels to an existing issue */
   addLabels(issueId: number, labels: string[]): Promise<void>;
+
+  /** Create a pull request (GitHub) or merge request (GitLab) */
+  createPR(opts: CreatePROpts): Promise<PRResult>;
 }
 
 // ── Issue map persistence ──

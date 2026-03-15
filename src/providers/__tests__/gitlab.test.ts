@@ -283,4 +283,164 @@ describe("GitLabProvider", () => {
       expect(exec.mock.calls[0][2]).toEqual({ cwd: "/my/project" });
     });
   });
+
+  describe("createPR", () => {
+    it("creates MR with all fields and parses URL and IID from stdout", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/group/project/-/merge_requests/23\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      const result = await provider.createPR({
+        title: "Add feature",
+        body: "Description here",
+        headBranch: "feature-branch",
+        baseBranch: "main",
+      });
+
+      expect(result.url).toBe("https://gitlab.com/group/project/-/merge_requests/23");
+      expect(result.number).toBe(23);
+
+      const args = exec.mock.calls[0][1];
+      expect(args).toContain("--title");
+      expect(args[args.indexOf("--title") + 1]).toBe("Add feature");
+      expect(args).toContain("--description");
+      expect(args[args.indexOf("--description") + 1]).toBe("Description here");
+      expect(args).toContain("--target-branch");
+      expect(args[args.indexOf("--target-branch") + 1]).toBe("main");
+      expect(args).toContain("--source-branch");
+      expect(args[args.indexOf("--source-branch") + 1]).toBe("feature-branch");
+    });
+
+    it("always includes --yes and --no-editor flags", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/g/p/-/merge_requests/1\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      await provider.createPR({
+        title: "Test",
+        body: "",
+        headBranch: "branch",
+        baseBranch: "main",
+      });
+
+      const args = exec.mock.calls[0][1];
+      expect(args).toContain("--yes");
+      expect(args).toContain("--no-editor");
+    });
+
+    it("uses --source-branch and --target-branch (not --head/--base)", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/g/p/-/merge_requests/1\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      await provider.createPR({
+        title: "Test",
+        body: "",
+        headBranch: "src",
+        baseBranch: "tgt",
+      });
+
+      const args = exec.mock.calls[0][1];
+      expect(args).not.toContain("--head");
+      expect(args).not.toContain("--base");
+      expect(args).toContain("--source-branch");
+      expect(args).toContain("--target-branch");
+    });
+
+    it("appends Closes #N when closesIssueId is provided", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/g/p/-/merge_requests/5\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      await provider.createPR({
+        title: "Fix bug",
+        body: "Fixes the thing",
+        headBranch: "fix",
+        baseBranch: "main",
+        closesIssueId: 10,
+      });
+
+      const args = exec.mock.calls[0][1];
+      const descIdx = args.indexOf("--description") + 1;
+      expect(args[descIdx]).toBe("Fixes the thing\n\nCloses #10");
+    });
+
+    it("passes --draft flag when draft is true", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/g/p/-/merge_requests/3\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      await provider.createPR({
+        title: "WIP",
+        body: "",
+        headBranch: "wip",
+        baseBranch: "main",
+        draft: true,
+      });
+
+      const args = exec.mock.calls[0][1];
+      expect(args).toContain("--draft");
+    });
+
+    it("throws ProviderError on non-zero exit code with diagnostic fields", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        fail(1, "merge request create failed"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      try {
+        await provider.createPR({
+          title: "Fail",
+          body: "",
+          headBranch: "x",
+          baseBranch: "main",
+        });
+        expect.unreachable("should have thrown");
+      } catch (err) {
+        expect(err).toBeInstanceOf(ProviderError);
+        const pe = err as ProviderError;
+        expect(pe.provider).toBe("gitlab");
+        expect(pe.operation).toBe("createPR");
+        expect(pe.exitCode).toBe(1);
+        expect(pe.stderr).toBe("merge request create failed");
+      }
+    });
+
+    it("throws ProviderError when URL cannot be parsed from stdout", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("Unexpected output with no MR URL\n"),
+      );
+      const provider = new GitLabProvider(exec);
+
+      await expect(
+        provider.createPR({
+          title: "Bad",
+          body: "",
+          headBranch: "x",
+          baseBranch: "main",
+        }),
+      ).rejects.toThrow(ProviderError);
+    });
+
+    it("passes cwd through when projectPath is set", async () => {
+      const exec = vi.fn<ExecFn>().mockResolvedValueOnce(
+        ok("https://gitlab.com/g/p/-/merge_requests/8\n"),
+      );
+      const provider = new GitLabProvider(exec, "/my/project");
+
+      await provider.createPR({
+        title: "Test",
+        body: "",
+        headBranch: "branch",
+        baseBranch: "main",
+      });
+
+      expect(exec.mock.calls[0][2]).toEqual({ cwd: "/my/project" });
+    });
+  });
 });

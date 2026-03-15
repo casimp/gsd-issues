@@ -12,11 +12,16 @@ import type {
   CreateIssueOpts,
   CloseIssueOpts,
   IssueFilter,
+  CreatePROpts,
+  PRResult,
 } from "./types.js";
 import { ProviderError } from "./types.js";
 
 /** Regex to extract IID from a GitLab issue URL: .../issues/123 */
 const ISSUE_URL_RE = /\/issues\/(\d+)/;
+
+/** Regex to extract IID from a GitLab MR URL: .../merge_requests/123 */
+const MR_URL_RE = /\/merge_requests\/(\d+)/;
 
 /** Shape returned by `glab issue list --output json` */
 interface GlabListItem {
@@ -152,6 +157,57 @@ export class GitLabProvider implements IssueProvider {
       "--label",
       labels.join(","),
     ]);
+  }
+
+  async createPR(opts: CreatePROpts): Promise<PRResult> {
+    let description = opts.body;
+    if (opts.closesIssueId !== undefined) {
+      description += `\n\nCloses #${opts.closesIssueId}`;
+    }
+
+    const args = [
+      "mr", "create",
+      "--title", opts.title,
+      "--description", description,
+      "--target-branch", opts.baseBranch,
+      "--source-branch", opts.headBranch,
+      "--yes", "--no-editor",
+    ];
+
+    if (opts.draft) {
+      args.push("--draft");
+    }
+
+    const result = await this.run("createPR", args);
+
+    const match = MR_URL_RE.exec(result.stdout);
+    if (!match) {
+      throw new ProviderError(
+        `Failed to parse MR IID from glab output: ${result.stdout.trim()}`,
+        "gitlab",
+        "createPR",
+        0,
+        result.stderr,
+        `glab ${args.join(" ")}`,
+      );
+    }
+
+    const mrIid = parseInt(match[1], 10);
+    if (!Number.isFinite(mrIid) || mrIid <= 0) {
+      throw new ProviderError(
+        `Parsed MR IID is not a positive integer: ${match[1]}`,
+        "gitlab",
+        "createPR",
+        0,
+        result.stderr,
+        `glab ${args.join(" ")}`,
+      );
+    }
+
+    const urlLine = result.stdout.split("\n").find((l) => l.includes("/merge_requests/"));
+    const url = urlLine?.trim() ?? `https://gitlab.com/project/-/merge_requests/${mrIid}`;
+
+    return { url, number: mrIid };
   }
 
   /** Execute a glab command, throwing ProviderError on non-zero exit. */

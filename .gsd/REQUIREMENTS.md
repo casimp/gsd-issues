@@ -142,9 +142,9 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Description: Create a PR/MR from the milestone branch to main when a milestone completes, with `Closes #N` linking to the milestone's issue so close happens on merge
 - Why it matters: Review is a fundamental part of team workflows — the milestone is the reviewable unit, one PR per milestone
 - Source: user
-- Primary owning slice: none
-- Supporting slices: none
-- Validation: unmapped
+- Primary owning slice: M002/S02
+- Supporting slices: M002/S01
+- Validation: contract (partial, M002/S01) — `createPR()` implemented on both providers with mock-exec tests proving CLI arg construction and URL parsing for `gh pr create` and `glab mr create`. `Closes #N` body injection tested. Full PR creation pipeline (branch push + PR command) deferred to S02.
 - Notes: Uses `gh pr create` / `glab mr create`. GSD already supports integration branches — if started from a milestone branch, slices merge into it, not main. PR targets main.
 
 ### R015 — Milestone-level issue tracking
@@ -153,9 +153,9 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Description: Sync creates one issue per milestone (not per slice). ISSUE-MAP maps milestone → issue. Close fires on milestone completion, not slice completion.
 - Why it matters: The milestone is the meaningful external unit — it has a clear outcome, maps to one branch and one PR. Slices are internal implementation detail.
 - Source: user
-- Primary owning slice: none
-- Supporting slices: none
-- Validation: unmapped
+- Primary owning slice: M002/S02
+- Supporting slices: M002/S01
+- Validation: contract (partial, M002/S01) — `IssueMapEntry.localId` convention established for milestone IDs (D029), `readIntegrationBranch()` reads META.json with full resilience (9 tests). Sync/close orchestration rebuild deferred to S02.
 - Notes: Replaces M001's per-slice sync model. The underlying provider abstraction and CLI wrappers remain valid. Sync/close orchestration rebuilt around milestones.
 
 ### R016 — Reverse flow: import issues and re-scope into milestones
@@ -249,8 +249,8 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R011 | core-capability | active | M001/S02 | M001/S03, M001/S04, M001/S05 | unmapped |
 | R012 | core-capability | active | M001/S03 | M001/S04, M001/S05 | unmapped |
 | R013 | launchability | active | M001/S06 | none | contract |
-| R014 | primary-user-loop | active | none | none | unmapped |
-| R015 | core-capability | active | none | none | unmapped |
+| R014 | primary-user-loop | active | M002/S02 | M002/S01 | contract (partial, M002/S01) |
+| R015 | core-capability | active | M002/S02 | M002/S01 | contract (partial, M002/S01) |
 | R016 | core-capability | active | none | none | unmapped |
 | R017 | differentiator | deferred | none | none | unmapped |
 | R020 | differentiator | deferred | none | none | unmapped |
@@ -260,6 +260,6 @@ This file is the explicit capability and coverage contract for gsd-issues.
 ## Coverage Summary
 
 - Active requirements: 16
-- Mapped to slices: 13
+- Mapped to slices: 15
 - Validated: 0
-- Unmapped active requirements: 3
+- Unmapped active requirements: 1

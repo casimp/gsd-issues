@@ -65,6 +65,7 @@ function mockProvider(
     closeIssue: closeFn ?? vi.fn(async () => {}),
     listIssues: vi.fn(async () => []),
     addLabels: vi.fn(async () => {}),
+    createPR: vi.fn(async () => ({ url: "", number: 0 })),
   };
 }
 

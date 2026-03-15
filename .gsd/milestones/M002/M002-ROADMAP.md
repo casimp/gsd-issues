@@ -52,7 +52,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: PR/MR provider support and milestone-level mapping** `risk:high` `depends:[]`
+- [x] **S01: PR/MR provider support and milestone-level mapping** `risk:high` `depends:[]`
   > After this: IssueProvider has createPR() method, both providers can create PRs via CLI, ISSUE-MAP stores milestone→issue entries, readIntegrationBranch() reads META.json.
 
 - [ ] **S02: Milestone-level sync and PR creation** `risk:medium` `depends:[S01]`

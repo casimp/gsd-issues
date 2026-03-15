@@ -12,7 +12,7 @@ When a GSD slice completes, the corresponding remote issue is automatically clos
 
 ## Current State
 
-M001 (Issue Tracker Integration) complete — built the foundation: provider abstraction, config system, CLI wrappers, sync/close/import. However, M001 operates at the slice level which doesn't match the actual workflow. M002 (Milestone-Level Issue Tracking and PR Workflow) is in planning — reframing around milestones as the unit of external work with PR/MR creation on milestone completion.
+M001 (Issue Tracker Integration) complete — built the foundation: provider abstraction, config system, CLI wrappers, sync/close/import. M002 (Milestone-Level Issue Tracking and PR Workflow) is in progress. S01 complete — extended IssueProvider with `createPR()` on both providers, added `readIntegrationBranch()` for META.json reading, established milestone-keyed ISSUE-MAP convention. S02 next — milestone-level sync and PR creation wiring.
 
 ## Architecture / Key Patterns
 
