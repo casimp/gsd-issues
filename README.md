@@ -8,16 +8,29 @@ GSD breaks work into milestones — right-sized chunks with a bounded number of 
 
 ```mermaid
 flowchart TD
-    subgraph plan["Planning (two entry points)"]
+    subgraph manual["Manual (individual commands)"]
         A[New work] --> C[GSD plans milestones]
         B[Existing tracker issues] -- "/issues import" --> C
+        C -- "/issues sync" --> E[Issue on tracker]
+        E --> F[Work slices on milestone branch]
+        F -- "/issues pr" --> G["PR/MR with Closes #N"]
+        G --> H[Review & merge]
+        H --> I[Issue auto-closes]
     end
 
-    C -- "/issues sync" --> E[Issue on tracker]
-    E --> F[Work slices on milestone branch]
-    F -- "/issues pr" --> G["PR/MR with Closes #N"]
-    G --> H[Review & merge]
-    H --> I[Issue auto-closes]
+    subgraph auto["Auto Flow (/issues auto)"]
+        AA["/issues auto"] --> AB[import]
+        AB --> AC[plan]
+        AC --> AD[validate-size]
+        subgraph sizing["Sizing check"]
+            AD -- oversized --> AE[split]
+            AE --> AD
+        end
+        AD -- ok --> AF[sync]
+        AF --> AG[execute]
+        AG --> AH[pr]
+        AH --> AI[done]
+    end
 ```
 
 **Starting from scratch:** GSD plans your milestones. `/issues sync` creates an issue on the tracker for each one.
@@ -25,6 +38,27 @@ flowchart TD
 **Starting from existing issues:** `/issues import` pulls issues from the tracker as markdown. GSD decomposes them into right-sized milestones. `/issues import --rescope` closes the originals and creates milestone-scoped issues.
 
 **Then, for every milestone:** work the slices on a milestone branch. When done, `/issues pr` creates a PR with `Closes #42` in the body. Merge the PR, the issue closes.
+
+**Or, let auto-flow handle it:** `/issues auto` drives the full lifecycle automatically — see below.
+
+## Auto Flow
+
+`/issues auto` runs the entire milestone lifecycle as a phase-based state machine, using multiple agent sessions:
+
+**import** → **plan** → **validate-size** → [**split** loop] → **sync** → **execute** → **pr** → **done**
+
+Each phase sends a prompt to the agent, waits for completion, then advances to the next. State persists to `.gsd/issues-auto.json` so progress survives restarts.
+
+### Sizing constraints
+
+Before syncing, the auto-flow validates that the milestone's slice count doesn't exceed `max_slices_per_milestone` (default: **5**). The behavior when a milestone is oversized depends on `sizing_mode`:
+
+- **`best_try`** (default): Warns that the milestone is oversized and proceeds anyway. The agent is asked to split, but the flow continues regardless of the outcome.
+- **`strict`**: Blocks until the milestone is right-sized. The agent is asked to split the milestone, then size is re-validated. This retries up to **3 times** before giving up with an error.
+
+### Mutual exclusion
+
+Auto-flow writes `.gsd/issues-auto.lock` and checks `.gsd/auto.lock` (GSD auto-mode) to prevent concurrent orchestration. Both locks use PID liveness checks for crash recovery.
 
 ## Providers
 
@@ -68,6 +102,8 @@ Walks you through provider detection, project discovery, and writes `.gsd/issues
   "assignee": "username",
   "labels": ["gsd"],
   "done_label": "T::Done",
+  "max_slices_per_milestone": 5,
+  "sizing_mode": "best_try",
   "gitlab": {
     "project_path": "group/project",
     "project_id": 42,
@@ -87,6 +123,8 @@ Walks you through provider detection, project discovery, and writes `.gsd/issues
   "milestone": "M001",
   "assignee": "username",
   "labels": ["gsd"],
+  "max_slices_per_milestone": 5,
+  "sizing_mode": "best_try",
   "github": {
     "repo": "owner/repo",
     "close_reason": "completed"
@@ -106,6 +144,8 @@ All via `/issues <subcommand>` in pi.
 | `/issues pr [id]` | Create a PR/MR from the milestone branch with `Closes #N` |
 | `/issues import` | Fetch issues from tracker as markdown for planning |
 | `/issues close [id]` | Close a milestone's issue directly (without a PR) |
+| `/issues auto` | Run the full milestone lifecycle automatically (import → pr) |
+| `/issues status` | Show auto-flow status (stubbed — not yet implemented) |
 
 ### Sync
 
@@ -127,7 +167,7 @@ This closes issues #10, #11, #12 and creates a new milestone-scoped issue for M0
 
 ## LLM Tools
 
-Four tools are registered for agent use (no confirmation prompts):
+Five tools are registered for agent use (no confirmation prompts):
 
 | Tool | Parameters |
 |---|---|
@@ -135,6 +175,7 @@ Four tools are registered for agent use (no confirmation prompts):
 | `gsd_issues_close` | `milestone_id?` |
 | `gsd_issues_pr` | `milestone_id?`, `target_branch?`, `dry_run?` |
 | `gsd_issues_import` | `milestone?`, `labels?`, `state?`, `assignee?`, `rescope_milestone_id?`, `original_issue_ids?` |
+| `gsd_issues_auto` | `milestone_id?` |
 
 ## Events
 
@@ -147,6 +188,7 @@ Emitted on `pi.events` for other extensions to consume:
 | `gsd-issues:pr-complete` | `{ milestoneId, prUrl, prNumber }` |
 | `gsd-issues:import-complete` | `{ issueCount }` |
 | `gsd-issues:rescope-complete` | `{ milestoneId, createdIssueId, closedOriginals, closeErrors }` |
+| `gsd-issues:auto-phase` | `{ phase, milestoneId }` |
 
 ## Requirements
 

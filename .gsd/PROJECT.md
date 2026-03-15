@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration) and M002 (Milestone-Level Issue Tracking and PR Workflow) both complete. M003 (Milestone Sizing and Auto-Flow Orchestration) in progress — S01 and S02 complete, S03 (README documentation) remaining. The extension now includes `/issues auto` command and `gsd_issues_auto` tool driving full milestone lifecycle via pi.sendMessage/newSession with mutual exclusion, split retry, and phase-based state machine. 309 contract tests across 18 files. Runtime UAT on real remotes is the remaining validation gap.
+M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), and M003 (Milestone Sizing and Auto-Flow Orchestration) all complete. The extension includes `/issues auto` command and `gsd_issues_auto` tool driving full milestone lifecycle via pi.sendMessage/newSession with mutual exclusion, split retry, and phase-based state machine. 309 contract tests across 18 files. Runtime UAT on real remotes is the remaining validation gap.
 
 ## Architecture / Key Patterns
 
@@ -37,4 +37,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 - [x] M001: Issue tracker integration — Provider abstraction, config, CLI wrappers (foundation)
 - [x] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge, import re-scope
-- [ ] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, `/issues auto` lifecycle
+- [x] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, `/issues auto` lifecycle

@@ -56,7 +56,7 @@ This milestone is complete only when all are true:
   > After this: `max_slices_per_milestone` and `mode` are persisted in config, setup wizard collects them, and `validateMilestoneSize()` correctly reports oversized milestones — proven by unit tests
 - [x] **S02: Auto-Flow Orchestration** `risk:high` `depends:[S01]`
   > After this: `/issues auto` drives the full lifecycle — import, plan, size-check, split, issue creation, execution, PR — using pi.sendMessage and ctx.newSession — proven by integration tests with mocked pi APIs
-- [ ] **S03: README and Documentation** `risk:low` `depends:[S02]`
+- [x] **S03: README and Documentation** `risk:low` `depends:[S02]`
   > After this: README accurately documents the full workflow with a mermaid diagram covering both planning entry points, sizing constraint, and the auto-flow — proven by visual inspection
 
 ## Boundary Map
