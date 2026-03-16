@@ -383,6 +383,51 @@ describe("validateConfig", () => {
     });
     expect(result.valid).toBe(true);
   });
+
+  // ── auto_pr validation ──
+
+  it("accepts valid auto_pr: true", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      auto_pr: true,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("accepts valid auto_pr: false", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      auto_pr: false,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("accepts absent auto_pr (backward compat)", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects non-boolean auto_pr", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "v1",
+      github: { repo: "o/r" },
+      auto_pr: "yes",
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => e.includes('"auto_pr"'))).toBe(true);
+    expect(result.errors.some((e) => e.includes("expected boolean"))).toBe(true);
+  });
 });
 
 describe("loadConfig / saveConfig", () => {

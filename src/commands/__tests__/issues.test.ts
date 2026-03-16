@@ -8,6 +8,7 @@ import type {
   ExtensionUI,
 } from "../../index.js";
 import type { Config } from "../../lib/config.js";
+import type { IssueMapEntry } from "../../providers/types.js";
 
 // ── Helpers ──
 
@@ -63,9 +64,10 @@ describe("issues command handleSmartEntry", () => {
   afterEach(async () => {
     process.chdir(origCwd);
     // Clear module-level state between tests
-    const { clearPreScopeMilestones, clearAutoRequested } = await import("../../commands/issues.js");
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
     clearPreScopeMilestones();
     clearAutoRequested();
+    clearHookState();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -260,9 +262,10 @@ describe("issues command scope completion detection", () => {
 
   afterEach(async () => {
     process.chdir(origCwd);
-    const { clearPreScopeMilestones, clearAutoRequested } = await import("../../commands/issues.js");
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
     clearPreScopeMilestones();
     clearAutoRequested();
+    clearHookState();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -366,6 +369,74 @@ describe("issues command scope completion detection", () => {
   });
 });
 
+describe("issues scope subcommand", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "issues-scope-cmd-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
+    clearPreScopeMilestones();
+    clearAutoRequested();
+    clearHookState();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("/issues scope routes to handleSmartEntry via index.ts command handler", async () => {
+    const pi = makePi();
+
+    const extensionFactory = (await import("../../index.js")).default;
+    extensionFactory(pi);
+
+    // Get the registered command handler
+    const registerCalls = (pi.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const issuesCall = registerCalls.find(([name]) => name === "issues");
+    expect(issuesCall).toBeDefined();
+    const handler = issuesCall![1].handler as (args: string, ctx: ExtensionCommandContext) => Promise<void>;
+
+    // No GSD state, no milestones — should hit fresh start path
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Scope work description"),
+    });
+    await handler("scope", ctx);
+
+    // Should have sent scope prompt via sendMessage (proves handleSmartEntry was called)
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:scope-prompt",
+        content: expect.stringContaining("Scope work description"),
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+  });
+
+  it("'scope' appears in argument completions", async () => {
+    const pi = makePi();
+
+    const extensionFactory = (await import("../../index.js")).default;
+    extensionFactory(pi);
+
+    // Get the registered command definition
+    const registerCalls = (pi.registerCommand as ReturnType<typeof vi.fn>).mock.calls;
+    const issuesCall = registerCalls.find(([name]) => name === "issues");
+    expect(issuesCall).toBeDefined();
+    const commandDef = issuesCall![1];
+
+    // Check completions include "scope"
+    const completions = commandDef.getArgumentCompletions("");
+    const scopeCompletion = completions.find((c: { value: string }) => c.value === "scope");
+    expect(scopeCompletion).toBeDefined();
+    expect(scopeCompletion.label).toBe("scope");
+  });
+});
+
 describe("issues command handleAutoEntry", () => {
   let tmpDir: string;
   let origCwd: string;
@@ -378,9 +449,10 @@ describe("issues command handleAutoEntry", () => {
 
   afterEach(async () => {
     process.chdir(origCwd);
-    const { clearPreScopeMilestones, clearAutoRequested } = await import("../../commands/issues.js");
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
     clearPreScopeMilestones();
     clearAutoRequested();
+    clearHookState();
     await rm(tmpDir, { recursive: true, force: true });
   });
 
@@ -611,5 +683,338 @@ describe("issues command handleAutoEntry", () => {
       }),
       expect.objectContaining({ triggerTurn: true }),
     );
+  });
+});
+
+// ── agent_end hooks tests ──
+
+// Mock the sync and PR modules
+vi.mock("../../lib/sync.js", () => ({
+  syncMilestoneToIssue: vi.fn(async () => ({
+    created: [{ localId: "M001", issueId: 1, provider: "github", url: "https://github.com/o/r/issues/1", createdAt: new Date().toISOString() }],
+    skipped: [],
+    errors: [],
+  })),
+  SyncToolSchema: {},
+}));
+
+vi.mock("../../lib/pr.js", () => ({
+  createMilestonePR: vi.fn(async () => ({
+    url: "https://github.com/o/r/pull/10",
+    number: 10,
+    milestoneId: "M001",
+    sourceBranch: "gsd/M001",
+    targetBranch: "main",
+  })),
+  PrToolSchema: {},
+}));
+
+vi.mock("../../lib/provider-factory.js", () => ({
+  createProvider: vi.fn(() => ({
+    createIssue: vi.fn(),
+    updateIssue: vi.fn(),
+    listIssues: vi.fn(async () => []),
+    createPR: vi.fn(),
+  })),
+}));
+
+describe("agent_end hooks", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "issues-hooks-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
+    clearPreScopeMilestones();
+    clearAutoRequested();
+    clearHookState();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function setupExtension() {
+    const pi = makePi();
+    const extensionFactory = (await import("../../index.js")).default;
+    extensionFactory(pi);
+
+    const onCalls = (pi.on as ReturnType<typeof vi.fn>).mock.calls;
+    const agentEndCall = onCalls.find(([event]) => event === "agent_end");
+    expect(agentEndCall).toBeDefined();
+    const agentEndHandler = agentEndCall![1] as () => Promise<void>;
+
+    return { pi, agentEndHandler };
+  }
+
+  async function writeMilestoneWithRoadmap(mid: string, opts?: { config?: Config; issueMap?: IssueMapEntry[]; summary?: boolean }) {
+    const mDir = join(tmpDir, ".gsd", "milestones", mid);
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, `${mid}-CONTEXT.md`), `# ${mid} — Context\n`);
+    await writeFile(join(mDir, `${mid}-ROADMAP.md`), `# ${mid} — Roadmap\n\n- [ ] **S01: Slice** \`risk:low\` \`depends:[]\`\n`);
+
+    if (opts?.issueMap) {
+      await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify(opts.issueMap));
+    }
+
+    if (opts?.summary) {
+      await writeFile(join(mDir, `${mid}-SUMMARY.md`), `---\nstatus: complete\n---\n# ${mid} Summary\n`);
+    }
+
+    if (opts?.config) {
+      await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+      await writeFile(join(tmpDir, ".gsd", "issues.json"), JSON.stringify(opts.config));
+    }
+  }
+
+  it("sync hook fires when ROADMAP.md exists and milestone is unmapped", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    // Enable hooks via auto entry resume path
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    expect(syncMilestoneToIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ milestoneId: "M001" }),
+    );
+
+    expect(pi.events.emit).toHaveBeenCalledWith(
+      "gsd-issues:auto-sync",
+      { milestoneId: "M001" },
+    );
+  });
+
+  it("sync hook skips already-synced milestones", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Mark as already synced
+    issuesModule.markSynced("M001");
+
+    const { agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    expect(syncMilestoneToIssue).not.toHaveBeenCalled();
+  });
+
+  it("sync hook skips milestones already in ISSUE-MAP.json", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    const { agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    expect(syncMilestoneToIssue).not.toHaveBeenCalled();
+  });
+
+  it("PR hook fires when SUMMARY.md exists and milestone is mapped", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+    issuesModule.markSynced("M001");
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(createMilestonePR).toHaveBeenCalledWith(
+      expect.objectContaining({ milestoneId: "M001" }),
+    );
+
+    expect(pi.events.emit).toHaveBeenCalledWith(
+      "gsd-issues:auto-pr",
+      { milestoneId: "M001" },
+    );
+  });
+
+  it("PR hook skips already-PR'd milestones", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+    issuesModule.markSynced("M001");
+    issuesModule.markPrd("M001");
+
+    const { agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(createMilestonePR).not.toHaveBeenCalled();
+  });
+
+  it("PR hook respects auto_pr: false", async () => {
+    const config: Config = { provider: "github", auto_pr: false, github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+    issuesModule.markSynced("M001");
+
+    const { agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(createMilestonePR).not.toHaveBeenCalled();
+  });
+
+  it("hooks are no-op when _hooksEnabled is false", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    // Don't enable hooks — don't call handleAutoEntry
+
+    const { agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(syncMilestoneToIssue).not.toHaveBeenCalled();
+    expect(createMilestonePR).not.toHaveBeenCalled();
+  });
+
+  it("hooks handle missing config gracefully (no-op)", async () => {
+    // Create milestone with ROADMAP but NO config file
+    const mDir = join(tmpDir, ".gsd", "milestones", "M001");
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
+    await writeFile(join(mDir, "M001-ROADMAP.md"), "# Roadmap\n");
+
+    // Enable hooks via auto entry — milestone exists so resume path fires
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    const { agentEndHandler } = await setupExtension();
+
+    // Should not throw
+    await agentEndHandler();
+
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(syncMilestoneToIssue).not.toHaveBeenCalled();
+    expect(createMilestonePR).not.toHaveBeenCalled();
+  });
+
+  it("sync hook catches errors without throwing", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Make sync throw
+    const syncModule = await import("../../lib/sync.js");
+    (syncModule.syncMilestoneToIssue as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("API rate limited"));
+
+    const { agentEndHandler } = await setupExtension();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Should not throw
+    await agentEndHandler();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("auto-sync hook failed for M001"),
+      expect.stringContaining("API rate limited"),
+    );
+
+    consoleSpy.mockRestore();
+  });
+
+  it("PR hook catches errors without throwing", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+    issuesModule.markSynced("M001");
+
+    // Make PR throw
+    const prModule = await import("../../lib/pr.js");
+    (prModule.createMilestonePR as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("Branch not found"));
+
+    const { agentEndHandler } = await setupExtension();
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Should not throw
+    await agentEndHandler();
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("auto-pr hook failed for M001"),
+      expect.stringContaining("Branch not found"),
+    );
+
+    consoleSpy.mockRestore();
   });
 });

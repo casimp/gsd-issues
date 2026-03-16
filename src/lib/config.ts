@@ -43,6 +43,7 @@ export interface Config {
   labels?: string[];
   max_slices_per_milestone?: number;
   sizing_mode?: "strict" | "best_try";
+  auto_pr?: boolean;
   gitlab?: GitLabConfig;
   github?: GitHubConfig;
   /** Allow extra fields to pass through without breaking validation */
@@ -138,6 +139,13 @@ export function validateConfig(config: unknown): {
         `Invalid sizing_mode: "${String(c.sizing_mode)}" — must be "strict" or "best_try"`,
       );
     }
+  }
+
+  // Optional: auto_pr (boolean when present)
+  if ("auto_pr" in c && typeof c.auto_pr !== "boolean") {
+    errors.push(
+      `Invalid type for "auto_pr": expected boolean, got ${typeof c.auto_pr}`,
+    );
   }
 
   // Provider-specific section enforcement

@@ -6,62 +6,34 @@ GSD breaks work into milestones — right-sized chunks with a bounded number of 
 
 ## How It Works
 
+There are three ways to start:
+
+**Start fresh** — no tracker issues yet. `/issues` (or `/issues scope`) walks you through describing the work, then GSD creates milestones and plans execution.
+
+**Start from existing issues** — `/issues` and choose "Import from tracker". Open issues are fetched as markdown context, and GSD decomposes them into right-sized milestones.
+
+**Resume** — `/issues auto` with existing milestones. GSD picks up where it left off and drives planning, execution, sync, and PR automatically.
+
 ### Manual workflow
 
-Run individual commands to move a milestone through the lifecycle.
+Run individual commands to move a milestone through the lifecycle:
 
-```mermaid
-flowchart TD
-    A[New work] --> C[GSD plans milestones]
-    B[Existing tracker issues] -- "/issues import" --> C
-    C -- "/issues sync" --> E[Issue on tracker]
-    E --> F[Work slices on milestone branch]
-    F -- "/issues pr" --> G["PR/MR with Closes #N"]
-    G --> H[Review & merge]
-    H --> I[Issue auto-closes]
-```
-
-**Starting from scratch:** GSD plans your milestones. `/issues sync` creates an issue on the tracker for each one.
-
-**Starting from existing issues:** `/issues import` pulls issues from the tracker as markdown. GSD decomposes them into right-sized milestones. `/issues import --rescope` closes the originals and creates milestone-scoped issues.
-
-**Then, for every milestone:** work the slices on a milestone branch. When done, `/issues pr` creates a PR with `Closes #42` in the body. Merge the PR, the issue closes.
+1. GSD plans milestones (or `/issues import` pulls existing tracker issues as planning context)
+2. `/issues sync` creates an issue on the tracker for the milestone
+3. Work the slices on the milestone branch
+4. `/issues pr` creates a PR/MR with `Closes #N`
+5. Review & merge — the issue auto-closes
 
 ### Auto workflow
 
-`/issues auto <milestone_id>` drives the full lifecycle for an existing milestone in one command — from importing tracker context through planning, sizing, execution, and PR.
+`/issues auto` drives the full lifecycle in one command:
 
-The milestone must already exist (at minimum, its `.gsd/milestones/M001/` directory and `M001-CONTEXT.md`). For new work, create the milestone with GSD first (`/gsd`), then hand it to `/issues auto` to plan, size, execute, and PR it.
+1. If no milestones exist, runs scope (same as `/issues scope`) to create them
+2. Dispatches `/gsd auto` — GSD handles planning and execution
+3. On `ROADMAP.md` creation, a hook automatically syncs the milestone to a tracker issue
+4. On `SUMMARY.md` creation (milestone complete), a hook automatically creates a PR
 
-```mermaid
-flowchart TD
-    A["Existing milestone (e.g. M001)"] --> B["/issues auto M001"]
-    B --> C[import — fetch tracker issues as planning context]
-    C --> D[plan — agent plans milestone with imports as context]
-    D --> E{slices ≤ limit?}
-    E -- yes --> G[sync — create tracker issue]
-    E -- no, strict --> F[split — agent re-plans into smaller milestones]
-    F --> D
-    E -- no, best_try --> G
-    G --> H[execute — work all slices]
-    H --> I["pr — PR/MR with Closes #N"]
-    I --> J[done]
-```
-
-Each phase sends a prompt to the agent via `pi.sendMessage`, waits for completion, then advances. State persists to `.gsd/issues-auto.json` so progress survives restarts.
-
-## Auto Flow Details
-
-### Sizing constraints
-
-Before syncing, the auto-flow validates that the milestone's slice count doesn't exceed `max_slices_per_milestone` (default: **5**). The behavior when a milestone is oversized depends on `sizing_mode`:
-
-- **`best_try`** (default): Warns that the milestone is oversized and proceeds anyway. The agent is asked to split, but the flow continues regardless of the outcome.
-- **`strict`**: Blocks until the milestone is right-sized. The agent is asked to split the milestone, then size is re-validated. This retries up to **3 times** before giving up with an error.
-
-### Mutual exclusion
-
-Auto-flow writes `.gsd/issues-auto.lock` and checks `.gsd/auto.lock` (GSD auto-mode) to prevent concurrent orchestration. Both locks use PID liveness checks for crash recovery.
+The hooks are idempotent — re-running `/issues auto` or restarting a session won't duplicate syncs or PRs.
 
 ## Providers
 
@@ -101,12 +73,12 @@ Walks you through provider detection, project discovery, and writes `.gsd/issues
 ```json
 {
   "provider": "gitlab",
-  "milestone": "M001",
   "assignee": "username",
   "labels": ["gsd"],
   "done_label": "T::Done",
   "max_slices_per_milestone": 5,
   "sizing_mode": "best_try",
+  "auto_pr": true,
   "gitlab": {
     "project_path": "group/project",
     "project_id": 42,
@@ -123,11 +95,11 @@ Walks you through provider detection, project discovery, and writes `.gsd/issues
 ```json
 {
   "provider": "github",
-  "milestone": "M001",
   "assignee": "username",
   "labels": ["gsd"],
   "max_slices_per_milestone": 5,
   "sizing_mode": "best_try",
+  "auto_pr": true,
   "github": {
     "repo": "owner/repo",
     "close_reason": "completed"
@@ -136,19 +108,34 @@ Walks you through provider detection, project discovery, and writes `.gsd/issues
 ```
 </details>
 
+Config fields:
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `provider` | yes | — | `"github"` or `"gitlab"` |
+| `milestone` | no | — | Milestone ID to target (e.g. `"M001"`). Usually set automatically during scope. |
+| `assignee` | no | — | Username to assign issues to |
+| `labels` | no | `[]` | Labels applied to created issues |
+| `done_label` | no | `"T::Done"` (GitLab) | Label applied when closing an issue |
+| `max_slices_per_milestone` | no | `5` | Maximum slices per milestone for sizing validation |
+| `sizing_mode` | no | `"best_try"` | `"best_try"` warns on oversized; `"strict"` blocks |
+| `auto_pr` | no | `true` | When true, PR is created automatically on milestone completion. Set to `false` to disable auto-PR in hooks. |
+
 ## Commands
 
 All via `/issues <subcommand>` in pi.
 
 | Command | What it does |
 |---|---|
+| `/issues` | Smart entry — detects project state and offers context-appropriate choices |
 | `/issues setup` | Interactive config wizard |
+| `/issues scope` | Run the scope flow — describe work, create milestones |
 | `/issues sync` | Create a tracker issue for the current milestone |
 | `/issues pr [id]` | Create a PR/MR from the milestone branch with `Closes #N` |
 | `/issues import` | Fetch issues from tracker as markdown for planning |
 | `/issues close [id]` | Close a milestone's issue directly (without a PR) |
-| `/issues auto` | Run the full milestone lifecycle automatically (import → pr) |
-| `/issues status` | Show auto-flow status (stubbed — not yet implemented) |
+| `/issues auto` | Run the full milestone lifecycle automatically — scope (if needed) → `/gsd auto` → sync → PR |
+| `/issues status` | Show status (not yet implemented) |
 
 ### Sync
 
@@ -170,7 +157,7 @@ This closes issues #10, #11, #12 and creates a new milestone-scoped issue for M0
 
 ## LLM Tools
 
-Five tools are registered for agent use (no confirmation prompts):
+Four tools are registered for agent use (no confirmation prompts):
 
 | Tool | Parameters |
 |---|---|
@@ -178,7 +165,6 @@ Five tools are registered for agent use (no confirmation prompts):
 | `gsd_issues_close` | `milestone_id?` |
 | `gsd_issues_pr` | `milestone_id?`, `target_branch?`, `dry_run?` |
 | `gsd_issues_import` | `milestone?`, `labels?`, `state?`, `assignee?`, `rescope_milestone_id?`, `original_issue_ids?` |
-| `gsd_issues_auto` | `milestone_id?` |
 
 ## Events
 
@@ -191,7 +177,10 @@ Emitted on `pi.events` for other extensions to consume:
 | `gsd-issues:pr-complete` | `{ milestoneId, prUrl, prNumber }` |
 | `gsd-issues:import-complete` | `{ issueCount }` |
 | `gsd-issues:rescope-complete` | `{ milestoneId, createdIssueId, closedOriginals, closeErrors }` |
-| `gsd-issues:auto-phase` | `{ phase, milestoneId }` |
+| `gsd-issues:scope-complete` | `{ milestoneIds, count }` |
+| `gsd-issues:auto-start` | `{ milestoneIds, trigger }` |
+| `gsd-issues:auto-sync` | `{ milestoneId }` |
+| `gsd-issues:auto-pr` | `{ milestoneId }` |
 
 ## Requirements
 

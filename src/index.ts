@@ -110,7 +110,7 @@ export interface ExtensionAPI {
 
 // ── Subcommand list ──
 
-const SUBCOMMANDS = ["setup", "sync", "import", "close", "pr", "status", "auto"] as const;
+const SUBCOMMANDS = ["setup", "sync", "import", "close", "pr", "status", "auto", "scope"] as const;
 
 // ── Extension factory ──
 
@@ -388,7 +388,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.registerCommand("issues", {
     description:
-      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|auto|status",
+      "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|auto|scope|status",
 
     getArgumentCompletions(prefix: string) {
       const trimmed = prefix.trim();
@@ -450,6 +450,12 @@ export default function (pi: ExtensionAPI): void {
           return;
         }
 
+        case "scope": {
+          const { handleSmartEntry } = await import("./commands/issues.js");
+          await handleSmartEntry(args, ctx, pi);
+          return;
+        }
+
         case "status":
           ctx.ui.notify(
             `/issues ${subcommand} is not yet implemented.`,
@@ -459,56 +465,162 @@ export default function (pi: ExtensionAPI): void {
 
         default:
           ctx.ui.notify(
-            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, pr, auto, status.`,
+            `Unknown subcommand: "${subcommand}". Use: setup, sync, import, close, pr, auto, scope, status.`,
             "warning",
           );
       }
     },
   });
 
-  // ── Scope completion detection via agent_end ──
+  // ── Scope completion detection and auto-mode hooks via agent_end ──
   pi.on("agent_end", async () => {
-    const { getPreScopeMilestones, clearPreScopeMilestones, isAutoRequested, clearAutoRequested } = await import("./commands/issues.js");
+    const {
+      getPreScopeMilestones, clearPreScopeMilestones,
+      isAutoRequested, clearAutoRequested,
+      isHooksEnabled, isSynced, markSynced, isPrd, markPrd,
+    } = await import("./commands/issues.js");
     const { scanMilestones, detectNewMilestones } = await import("./lib/smart-entry.js");
 
-    const before = getPreScopeMilestones();
-    if (before === null) return; // No scope in progress
-
     const cwd = process.cwd();
-    const after = await scanMilestones(cwd);
-    const newMilestones = detectNewMilestones(before, after);
 
-    // Always clear the snapshot — scope detection is one-shot
-    clearPreScopeMilestones();
+    // ── Scope completion detection ──
+    const before = getPreScopeMilestones();
+    if (before !== null) {
+      const after = await scanMilestones(cwd);
+      const newMilestones = detectNewMilestones(before, after);
 
-    if (newMilestones.length > 0) {
-      pi.events.emit("gsd-issues:scope-complete", {
-        milestoneIds: newMilestones,
-        count: newMilestones.length,
-      });
+      // Always clear the snapshot — scope detection is one-shot
+      clearPreScopeMilestones();
 
-      // Chain into GSD auto-mode when auto was requested
-      if (isAutoRequested()) {
-        clearAutoRequested();
-
-        pi.events.emit("gsd-issues:auto-start", {
+      if (newMilestones.length > 0) {
+        pi.events.emit("gsd-issues:scope-complete", {
           milestoneIds: newMilestones,
-          trigger: "scope-complete",
+          count: newMilestones.length,
         });
 
-        pi.sendMessage(
-          {
-            customType: "gsd-issues:auto-dispatch",
-            content: "/gsd auto",
-            display: false,
-          },
-          { triggerTurn: true },
-        );
+        // Chain into GSD auto-mode when auto was requested
+        if (isAutoRequested()) {
+          clearAutoRequested();
+
+          pi.events.emit("gsd-issues:auto-start", {
+            milestoneIds: newMilestones,
+            trigger: "scope-complete",
+          });
+
+          pi.sendMessage(
+            {
+              customType: "gsd-issues:auto-dispatch",
+              content: "/gsd auto",
+              display: false,
+            },
+            { triggerTurn: true },
+          );
+        }
+      } else {
+        // Scope didn't produce milestones — clear auto flag to prevent stuck state
+        if (isAutoRequested()) {
+          clearAutoRequested();
+        }
       }
-    } else {
-      // Scope didn't produce milestones — clear auto flag to prevent stuck state
-      if (isAutoRequested()) {
-        clearAutoRequested();
+    }
+
+    // ── Auto-sync hook: ROADMAP.md exists + unmapped → sync ──
+    if (isHooksEnabled()) {
+      let config: Config | null = null;
+      try {
+        config = await loadConfig(cwd);
+      } catch {
+        // No config — hooks are no-op without config
+      }
+
+      if (config) {
+        const { loadIssueMap: loadMap } = await import("./lib/issue-map.js");
+        const { scanMilestones: scan } = await import("./lib/smart-entry.js");
+        const { readFile } = await import("node:fs/promises");
+
+        const allMilestones = await scan(cwd);
+
+        for (const mid of allMilestones) {
+          // Check if ROADMAP.md exists
+          const roadmapPath = findRoadmapPath(cwd, mid);
+          try {
+            await readFile(roadmapPath, "utf-8");
+          } catch {
+            continue; // No ROADMAP.md — skip
+          }
+
+          // Check if already synced by hooks
+          if (isSynced(mid)) continue;
+
+          // Check if already mapped in ISSUE-MAP.json
+          const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+          const existingMap = await loadMap(mapPath);
+          if (existingMap.some((e) => e.localId === mid)) continue;
+
+          // Sync this milestone
+          try {
+            const { syncMilestoneToIssue: syncFn } = await import("./lib/sync.js");
+            const { createProvider: createProv } = await import("./lib/provider-factory.js");
+            const provider = createProv(config, pi.exec);
+            await syncFn({
+              provider,
+              config: { ...config, milestone: mid },
+              milestoneId: mid,
+              cwd,
+              mapPath,
+              exec: pi.exec,
+              emit: pi.events.emit.bind(pi.events),
+            });
+            markSynced(mid);
+            pi.events.emit("gsd-issues:auto-sync", { milestoneId: mid });
+          } catch (err) {
+            console.error(`[gsd-issues] auto-sync hook failed for ${mid}:`, err instanceof Error ? err.message : err);
+          }
+        }
+
+        // ── Auto-PR hook: SUMMARY.md exists + mapped + auto_pr → PR ──
+        for (const mid of allMilestones) {
+          // Check if SUMMARY.md exists
+          const summaryPath = join(cwd, ".gsd", "milestones", mid, `${mid}-SUMMARY.md`);
+          try {
+            await readFile(summaryPath, "utf-8");
+          } catch {
+            continue; // No SUMMARY.md — skip
+          }
+
+          // Check if already PR'd by hooks
+          if (isPrd(mid)) continue;
+
+          // Check if mapped in ISSUE-MAP.json (must be mapped to create PR)
+          const roadmapPath = findRoadmapPath(cwd, mid);
+          const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+          const { loadIssueMap: loadMap2 } = await import("./lib/issue-map.js");
+          const existingMap = await loadMap2(mapPath);
+          if (!existingMap.some((e) => e.localId === mid)) continue;
+
+          // Check auto_pr config (default true)
+          if (config.auto_pr === false) continue;
+
+          // Create PR for this milestone
+          try {
+            const { createMilestonePR: prFn } = await import("./lib/pr.js");
+            const { createProvider: createProv } = await import("./lib/provider-factory.js");
+            const provider = createProv(config, pi.exec);
+            await prFn({
+              provider,
+              config,
+              exec: pi.exec,
+              cwd,
+              milestoneId: mid,
+              mapPath,
+              emit: pi.events.emit.bind(pi.events),
+            });
+            markPrd(mid);
+            pi.events.emit("gsd-issues:auto-pr", { milestoneId: mid });
+          } catch (err) {
+            console.error(`[gsd-issues] auto-pr hook failed for ${mid}:`, err instanceof Error ? err.message : err);
+          }
+        }
       }
     }
   });

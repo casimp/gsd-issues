@@ -46,6 +46,46 @@ export function clearPreScopeMilestones(): void {
  */
 let _autoRequested = false;
 
+// ── Hook state for auto-sync and auto-PR ──
+// Tracks which milestones have been synced/PR'd by agent_end hooks to prevent duplicates.
+// Cleared between sessions via clearHookState().
+
+const _syncedMilestones = new Set<string>();
+const _prdMilestones = new Set<string>();
+let _hooksEnabled = false;
+
+/** Check if a milestone has been synced by hooks */
+export function isSynced(id: string): boolean {
+  return _syncedMilestones.has(id);
+}
+
+/** Check if a milestone has been PR'd by hooks */
+export function isPrd(id: string): boolean {
+  return _prdMilestones.has(id);
+}
+
+/** Check if hooks are enabled (auto-mode active) */
+export function isHooksEnabled(): boolean {
+  return _hooksEnabled;
+}
+
+/** Clear all hook state — call between tests and on session end */
+export function clearHookState(): void {
+  _syncedMilestones.clear();
+  _prdMilestones.clear();
+  _hooksEnabled = false;
+}
+
+/** Mark a milestone as synced by hooks (also used internally) */
+export function markSynced(id: string): void {
+  _syncedMilestones.add(id);
+}
+
+/** Mark a milestone as PR'd by hooks (also used internally) */
+export function markPrd(id: string): void {
+  _prdMilestones.add(id);
+}
+
 /** Check if auto-mode was requested */
 export function isAutoRequested(): boolean {
   return _autoRequested;
@@ -211,6 +251,7 @@ export async function handleAutoEntry(
   if (existingMilestones.length > 0) {
     // Resume path: skip scope, start GSD auto directly
     _autoRequested = false; // No need for the flag — dispatching immediately
+    _hooksEnabled = true;
 
     pi.events.emit("gsd-issues:auto-start", {
       milestoneIds: existingMilestones,
@@ -235,5 +276,6 @@ export async function handleAutoEntry(
 
   // No milestones — run smart entry first, then auto after scope completes
   _autoRequested = true;
+  _hooksEnabled = true;
   await handleSmartEntry(args, ctx, pi);
 }
