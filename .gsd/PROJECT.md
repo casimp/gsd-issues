@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), and M003 (Milestone Sizing and Auto-Flow Orchestration) all complete with milestone summaries written. The extension includes `/issues auto` command and `gsd_issues_auto` tool driving full milestone lifecycle via pi.sendMessage/newSession with mutual exclusion, split retry, and phase-based state machine. 309 contract tests across 18 files, zero regressions. All M003 requirements (R018, R019, R021) validated at contract level. Runtime UAT on real remotes is the remaining validation gap across all three milestones.
+M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), and M003 (Milestone Sizing and Auto-Flow Orchestration) are code-complete with 309 tests. However, M003 has a critical design gap: the entire auto-flow and all manual commands require a pre-existing milestone ID. Users don't think in milestones — they have work to do (existing tracker issues or greenfield). The extension should create right-sized milestones from the user's work, not require them as input. M004 fixes this.
 
 ## Architecture / Key Patterns
 
@@ -37,4 +37,5 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 - [x] M001: Issue tracker integration — Provider abstraction, config, CLI wrappers (foundation)
 - [x] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge, import re-scope
-- [x] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, `/issues auto` lifecycle
+- [x] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, orchestration state machine (has design gap: requires pre-existing milestone IDs)
+- [ ] M004: User-facing workflow — Start from work, not milestones. Add scoping phase, remove milestone ID requirement.
