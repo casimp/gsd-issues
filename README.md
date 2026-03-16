@@ -34,11 +34,11 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[New work or existing issues] --> B["/issues auto"]
-    B --> C[import issues from tracker]
-    C --> D[plan milestone]
+    B --> C[import — fetch tracker issues]
+    C --> D[plan — agent plans milestone with imports as context]
     D --> E{slices ≤ limit?}
     E -- yes --> G[sync — create tracker issue]
-    E -- no, strict --> F[split into smaller milestones]
+    E -- no, strict --> F[split — agent re-plans into smaller milestones]
     F --> D
     E -- no, best_try --> G
     G --> H[execute — work all slices]
