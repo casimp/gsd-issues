@@ -24,6 +24,17 @@ Run individual commands to move a milestone through the lifecycle:
 4. `/issues pr` creates a PR/MR with `Closes #N`
 5. Review & merge — the issue auto-closes
 
+```mermaid
+flowchart TD
+    A[New work] --> C[GSD plans milestones]
+    B[Existing tracker issues] -- "/issues import" --> C
+    C -- "/issues sync" --> E[Issue on tracker]
+    E --> F[Work slices on milestone branch]
+    F -- "/issues pr" --> G["PR/MR with Closes #N"]
+    G --> H[Review & merge]
+    H --> I[Issue auto-closes]
+```
+
 ### Auto workflow
 
 `/issues auto` drives the full lifecycle in one command:
@@ -34,6 +45,18 @@ Run individual commands to move a milestone through the lifecycle:
 4. On `SUMMARY.md` creation (milestone complete), a hook automatically creates a PR
 
 The hooks are idempotent — re-running `/issues auto` or restarting a session won't duplicate syncs or PRs.
+
+```mermaid
+flowchart TD
+    A["/issues auto"] --> B{milestones exist?}
+    B -- no --> C[scope — describe work or import issues]
+    C --> D[GSD creates milestone directories]
+    B -- yes --> E["/gsd auto" — plan & execute]
+    D --> E
+    E -- ROADMAP.md created --> F[hook: sync milestone to tracker issue]
+    E -- SUMMARY.md created --> G["hook: create PR with Closes #N"]
+    G --> H[Review & merge — issue auto-closes]
+```
 
 ## Providers
 
