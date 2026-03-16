@@ -36,7 +36,7 @@ flowchart TD
     L --> M[review & merge — issue auto-closes]
 ```
 
-With `/issues`, steps I and L are confirmation prompts — you choose whether to proceed. With `/issues auto`, they fire automatically. Either way, each action fires once per milestone — re-entering the flow won't duplicate syncs or PRs.
+With `/issues`, the sync and PR steps are confirmation prompts — you choose whether to proceed. With `/issues auto`, they fire automatically. Either way, each action fires once per milestone — re-entering the flow won't duplicate syncs or PRs.
 
 ### Standalone commands
 
