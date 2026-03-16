@@ -1,162 +1,100 @@
-# M004: User-Facing Workflow — Start From Work, Not Milestones
+# M004: Start From Work, Not Milestones
 
 **Gathered:** 2026-03-14
 **Status:** Ready for planning
 
 ## The Problem
 
-M003 built a phase-based orchestration state machine, sizing validation, and split retry — but it got the fundamental abstraction wrong. The entire auto-flow (`/issues auto`) and all manual commands (`/issues sync`, `/issues pr`) require a **milestone ID** as input. They assume milestones already exist.
+Every command in gsd-issues requires a milestone ID. Users don't have milestone IDs — they have work to do. The step that turns work into right-sized milestones doesn't exist.
 
-**Users don't think in milestones. Milestones are an internal GSD artifact.** Users think in terms of:
+Users start from one of two places:
 
 1. "I have issues on my tracker I want to work on" → **existing work**
-2. "I want to build something new" → **greenfield work**
+2. "I want to build something new" → **greenfield**
 
-In both cases, the extension should handle everything: figure out the scope, create right-sized milestones (respecting `max_slices_per_milestone`), sync them to the tracker, execute, and PR. The user should never need to know or specify a milestone ID.
+In both cases, the extension should create right-sized milestones (bounded by `max_slices_per_milestone`) from the user's work. The user should never need to know what a milestone ID is.
 
-This is not a minor gap. The user who planned M003 spent 2-3 hours across multiple sessions designing this flow, and the artifacts produced during those sessions failed to capture the core value proposition: **start from work, not from milestones**. The result was hours of correctly-implemented wrong thing — a state machine that orchestrates within pre-existing milestones instead of creating them from the user's actual work.
+M003 built sizing validation, a phase-based orchestration state machine, split retry, and mutual exclusion — all mechanically correct, all tested (43 orchestration tests, 309 total). But it pointed everything at a pre-existing milestone ID instead of building the entry point that creates milestones from work.
 
-## What Exists Today (What's Wrong)
+## What's Missing: Scoping
 
-### Auto mode (`/issues auto`)
-- **Requires a milestone ID** (from args, config, or GSD state)
-- Errors with "Cannot determine milestone" if none is found
-- The phase sequence (`import → plan → validate-size → [split] → sync → execute → pr → done`) operates on a single pre-existing milestone
-- The `import` phase fetches tracker issues but dumps them as context for an already-existing milestone — it doesn't create milestones from them
-- The `plan` phase says "plan the milestone roadmap" — it assumes the milestone directory and context already exist
+The current flow assumes milestones exist:
 
-### Manual mode (`/issues sync`, `/issues pr`, etc.)
-- All resolve milestone from `config.milestone` or GSD state
-- All assume milestones exist with roadmaps, context files, etc.
-- There is no `/issues` command that goes from "here is work" to "milestones planned and synced"
+`import → plan → validate-size → [split] → sync → execute → pr`
 
-### What works fine
-- **Config and setup** (M003/S01): `max_slices_per_milestone`, `sizing_mode`, setup wizard — all correct
-- **Sizing validation** (M003/S01): `validateMilestoneSize()` correctly identifies oversized milestones — correct
-- **Orchestration machinery** (M003/S02): Phase state machine, mutual exclusion, lock files, agent_end handler, split retry — all mechanically correct, just pointed at the wrong starting point
-- **Provider abstraction, sync, close, PR, import** (M001, M002): All work fine once milestones exist
+The correct flow creates milestones from work:
 
-## What Should Exist
+`[import] → **SCOPE** → plan → validate-size → sync → execute → pr`
 
-### Two entry points, two modes, one outcome
+**Scoping** is the missing step:
+1. Look at imported tracker issues (if any) or ask the user what they want to build
+2. Create one or more right-sized milestone directories with CONTEXT.md files
+3. Each milestone bounded to `max_slices_per_milestone`
+4. If the work is too big for one milestone, create multiple milestones upfront
 
-| | Manual (`/issues`) | Auto (`/issues auto`) |
-|---|---|---|
-| **Existing tracker issues** | `/issues import` pulls issues → agent scopes into right-sized milestones → `/issues sync` creates tracker issues → user works → `/issues pr` | `/issues auto` does all of this end-to-end |
-| **Greenfield (new work)** | Agent creates milestone from user description → `/issues sync` → user works → `/issues pr` | `/issues auto` — agent asks what to build, creates milestones, executes everything |
+After scoping, the existing machinery (plan, validate-size, sync, execute, pr) works on each created milestone. Auto mode runs it all. Manual mode lets the user drive each step.
 
-In **both cases**:
-- The extension creates milestones — the user never specifies a milestone ID
-- Milestones are right-sized (≤ `max_slices_per_milestone`) at creation time
-- If the work is too large, multiple milestones are created
-- Milestones are synced to the tracker as issues
+## What Exists Today
 
-### The key missing piece: SCOPING
+### Works correctly (keep)
+- **Sizing validation** (`src/lib/sizing.ts`, 86 lines, 9 tests): `validateMilestoneSize()` correctly identifies oversized milestones
+- **Phase state machine** (`src/lib/auto.ts`, 602 lines, 26 tests): `advancePhase()`, phase transitions, `AutoDeps` injection, split retry (strict 3x, best_try warn), mutual exclusion via lock files with PID checks
+- **Command wiring** (`src/commands/auto.ts`, 163 lines, 17 tests): `buildAutoDeps()`, stashed context pattern, agent_end handler
+- **Config and setup** (`src/lib/config.ts`, `src/commands/setup.ts`): `max_slices_per_milestone`, `sizing_mode`, setup wizard
+- **All M001/M002 code**: providers, sync, close, PR, import, issue-map — all work once milestones exist
+- Prompt builders for plan, split, sync, execute, pr phases (just need milestone ID to come from scoping output instead of command args)
 
-The current flow is: `import → plan → validate-size → sync → execute → pr`
+### Broken (fix)
+- **Everything requires a milestone ID upfront.** `startAuto(milestoneId, deps)`, `handleAuto()` errors if no milestone found, all manual commands resolve from config/GSD state. The milestone doesn't exist yet — it needs to be created from the user's work.
+- **No scoping step.** There is no code, command, or phase that goes from "here is work" to "here are right-sized milestones."
+- **Import prompt is wrong.** Says "assess the scope for this milestone" — should be "fetch issues to inform scoping."
+- **No way to run the pipeline across multiple milestones.** If scoping creates 3 milestones, the current state machine can only handle one.
 
-The correct flow is: `[import] → SCOPE → plan → validate-size → sync → execute → pr`
+## What Must Change
 
-**Scoping** is the phase where:
-1. The agent looks at imported issues (if any) or asks the user what they want to build
-2. Creates one or more right-sized milestone directories with CONTEXT.md files
-3. Each milestone is bounded to `max_slices_per_milestone`
-4. If the work is too big for one milestone, multiple milestones are created upfront
+1. **Add scoping logic** — the core new code. Takes work context (imported issues, user description, or nothing), creates right-sized milestone(s) with CONTEXT.md. Respects `max_slices_per_milestone`. Returns created milestone ID(s). Used by both `/issues auto` and a new `/issues scope` command.
 
-After scoping, the existing machinery (plan, validate-size, sync, execute, pr) works on each created milestone.
+2. **Remove milestone ID as a prerequisite.** `startAuto()` starts with import/scope. `handleAuto()` doesn't error when no milestone is found. Manual commands that need a milestone (`sync`, `pr`, `close`) resolve from GSD state and give clear errors — but scoping happens before any of them.
 
-### What this means for existing code
+3. **Add scope phase to the state machine.** `AutoPhase` gets `scope` before `plan`. Scoping output (milestone IDs) feeds into subsequent phases. State machine loops if multiple milestones were created.
 
-The orchestration state machine in `src/lib/auto.ts` is mostly correct mechanically — it just needs:
-1. A `scope` phase at the front that creates milestones from work (not from an existing milestone ID)
-2. The ability to operate without a pre-existing milestone ID
-3. Loop over multiple milestones if scoping creates more than one
+4. **Fix import prompt.** It's fetching issues to inform scoping, not assessing an existing milestone.
 
-The command handler in `src/commands/auto.ts` needs:
-1. To work without a milestone ID — that's no longer an error, it's the expected starting state
-2. Milestone resolution happens AFTER scoping, not before
+5. **Add `/issues scope` command.** Manual entry point for scoping — the interactive equivalent of auto's scope phase. Workflow becomes: `import → scope → sync → work → pr`.
 
-The manual commands need:
-1. A way to trigger scoping — probably through `/issues import --scope` or just making `/issues import` + agent interaction create milestones directly
-2. Or: the existing import already works (it gives issues to the agent) — the gap is that there's no command that then creates milestones from that context
+6. **Update README.** Both entry points (existing issues, greenfield). Users never specify milestone IDs. Scoping is the entry point, not milestone resolution.
 
 ## Codebase Reference
 
-- `src/lib/auto.ts` (602 lines) — Phase state machine. `startAuto()` takes `milestoneId`. `advancePhase()` transitions. All prompt builders reference `milestoneId`. The `import` phase prompt says "assess the scope for this milestone" — wrong framing.
-- `src/commands/auto.ts` (163 lines) — Command handler. `handleAuto()` resolves milestone from args/config/state and errors if none found. `buildAutoDeps()` constructs injected deps.
-- `src/lib/sizing.ts` (86 lines) — `validateMilestoneSize()` — works correctly, no changes needed.
-- `src/commands/sync.ts` — Resolves milestone from config/GSD state. Works once milestone exists.
-- `src/lib/sync.ts` — `syncMilestoneToIssue()` — works correctly for syncing a milestone to tracker.
+- `src/lib/auto.ts` (602 lines) — Phase state machine. `startAuto()` takes `milestoneId`. All prompts reference it.
+- `src/commands/auto.ts` (163 lines) — Command handler. Errors if no milestone ID found.
+- `src/lib/sizing.ts` (86 lines) — Sizing validation. Works correctly, no changes needed.
+- `src/commands/sync.ts` — Resolves milestone from config/GSD state.
+- `src/lib/sync.ts` — `syncMilestoneToIssue()`. Works once milestone exists.
 - `src/lib/__tests__/auto.test.ts` (508 lines) — 26 unit tests, all assume milestone ID exists.
 - `src/commands/__tests__/auto.test.ts` (513 lines) — 17 integration tests, all assume milestone ID exists.
-- GSD reference: `~/.gsd/agent/extensions/gsd/auto.ts` — GSD's own auto-mode handles "no milestone" via `showSmartEntry()` which creates milestones through guided discussion. This is the pattern to follow.
-- GSD reference: `~/.gsd/agent/extensions/gsd/guided-flow.ts` — `showSmartEntry()` and `buildDiscussPrompt()` show how GSD creates milestones from nothing.
+- GSD reference: `~/.gsd/agent/extensions/gsd/auto.ts` — handles "no milestone" via `showSmartEntry()`.
+- GSD reference: `~/.gsd/agent/extensions/gsd/guided-flow.ts` — creates milestones from nothing.
 
 ## Decisions Register
 
-Read `.gsd/DECISIONS.md` — all 45 decisions from M001-M003 are relevant context. Key ones:
-- D041 — AutoDeps injection pattern (keep this)
-- D042 — Lock file mutual exclusion (keep this)
-- D043 — Stashed cmdCtx pattern (keep this)
-- D044 — Split retry max 3 (keep this)
-
-## What Must Change vs What's Salvageable
-
-### Salvageable (don't rewrite — this code works and is tested)
-- Phase state machine pattern in `src/lib/auto.ts`: `advancePhase()`, phase transitions, `AutoDeps` injection, `stopAuto()`, `isAutoActive()` — 602 lines, 26 unit tests
-- Sizing validation in `src/lib/sizing.ts`: `validateMilestoneSize()` — 86 lines, 9 tests
-- Split retry logic in `src/lib/auto.ts` (~lines 450-504): strict mode retries 3x, best_try warns and proceeds
-- Mutual exclusion in `src/lib/auto.ts` (~lines 89-150): lock files with PID liveness checks, GSD auto detection
-- State persistence: `writeAutoState()`, `readAutoState()`, lock file helpers
-- Config and setup: `max_slices_per_milestone`, `sizing_mode`, setup wizard — all in `src/lib/config.ts` and `src/commands/setup.ts`
-- agent_end handler in `src/index.ts`: advances phases via stashed context
-- Command handler structure in `src/commands/auto.ts`: `buildAutoDeps()`, stashed context pattern, `getStashedContext()`
-- All provider/sync/close/PR/import library code
-- Prompt builders for plan, split, sync, execute, pr phases (just need milestone ID to come from state instead of args)
-
-### Must change
-- **Auto mode (`src/lib/auto.ts`, `src/commands/auto.ts`):**
-  - `AutoPhase` type needs a `scope` phase before `plan`
-  - `startAuto()` must not require a milestone ID — it should accept optional context (imported issues, user description)  
-  - `handleAuto()` must not error when no milestone ID is found — that's the normal case
-  - Import prompt must not reference a milestone — it's fetching issues to inform scoping, not to assess an existing milestone
-  - Plan prompt must reference the milestone created by scoping
-  - State machine needs to handle the scope→plan transition (scoping creates milestoneId, subsequent phases use it)
-  - Auto-flow needs to loop if scoping creates multiple milestones
-  - Tests need updating to cover the "start from nothing" path
-
-- **Manual commands (`src/commands/sync.ts`, `src/commands/import.ts`, `src/commands/pr.ts`, `src/commands/close.ts`):**
-  - Currently all resolve milestone from `config.milestone` or GSD state — this is the same problem as auto, just less obvious
-  - `/issues sync` should work without a milestone ID: if GSD has a current milestone, use it; if not, tell the user to scope first or run auto
-  - `/issues import` already works without a milestone (it just fetches issues) — but after import, there's no way to go from "here are issues" to "create milestones from them" without auto mode. The manual path needs a scoping step too — either built into import (e.g. `/issues import --scope`) or as a separate `/issues scope` command
-  - `/issues pr` and `/issues close` legitimately need a milestone (you're PR-ing or closing something that exists) — these can keep resolving from GSD state, but should give better errors when no milestone is active
-  - The manual workflow as a whole needs to make sense as a sequence a user can follow without knowing milestone IDs: import → scope → sync → work → pr
-
-### README
-- Must accurately describe both entry points (existing issues, greenfield)
-- Must show that users never specify milestone IDs
-- Must show both manual and auto workflows with scoping as the entry point
-- Mermaid diagrams must show the complete flow for both modes
+Read `.gsd/DECISIONS.md` — all 45 decisions. Key ones to keep:
+- D041 — AutoDeps injection pattern
+- D042 — Lock file mutual exclusion
+- D043 — Stashed cmdCtx pattern
+- D044 — Split retry max 3
 
 ## Success Criteria
 
-### Auto mode
-- `/issues auto` works with no arguments — the agent asks what to build or imports from tracker
-- `/issues auto` works with `--issues 10,11,12` — scopes those tracker issues into right-sized milestones  
-- Scoping creates milestones bounded by `max_slices_per_milestone`
-- After scoping, the existing plan→validate-size→sync→execute→pr flow runs for each milestone
-
-### Manual mode
-- A user can go from "I have tracker issues" to "milestones planned and synced" using manual commands, without ever typing a milestone ID
-- A user can go from "I want to build something new" to "milestone planned and synced" using manual commands, without ever typing a milestone ID
-- `/issues sync` and `/issues pr` resolve the active milestone from GSD state without the user specifying one
-- The manual command sequence is documented and makes sense as a workflow
-
-### Both modes
-- Users never need to know what a milestone ID is
-- All existing tests continue passing (with updates for changed interfaces)
-- README documents both manual and auto workflows accurately
-- 309 existing tests updated/preserved, new tests cover scoping
+- The extension works from "I have work" to "milestones planned and synced" — no milestone ID ever specified by the user
+- Scoping creates right-sized milestones bounded by `max_slices_per_milestone`
+- Existing issues entry: user points at tracker issues, extension scopes them into milestones
+- Greenfield entry: user describes what to build, extension creates milestones
+- If work exceeds one milestone, multiple milestones are created
+- After scoping, the existing plan→validate-size→sync→execute→pr pipeline works for each milestone
+- All 309 existing tests continue passing (with updates for changed interfaces)
+- New tests cover scoping
+- README documents both entry points accurately
 
 ## Technical Constraints
 
