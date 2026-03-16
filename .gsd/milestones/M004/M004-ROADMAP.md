@@ -54,22 +54,23 @@ This milestone is complete only when all are true:
 
 - [x] **S01: Scope phase and milestone-free entry** `risk:high` `depends:[]`
   > After this: `/issues auto` with no milestone starts scoping, detects the created milestone on disk, and transitions to plan. `/issues scope` runs independently. Import prompt updated. Resume path preserved. Proven by contract tests with mocked pi APIs.
-- [ ] **S02: Multi-milestone sequencing and README** `risk:medium` `depends:[S01]`
-  > After this: when scope creates multiple milestones, auto-flow loops through each one (plan→validate-size→sync→execute→pr per milestone). README documents all three entry points. Proven by contract tests.
+- [ ] **S02: Multi-milestone sequencing, /issues scope, and README** `risk:medium` `depends:[S01]`
+  > After this: when scope creates multiple milestones, auto-flow loops through each one (plan→validate-size→sync→execute→pr per milestone). `/issues scope` subcommand runs scoping independently. README documents all three entry points. Proven by contract tests.
 
 ## Boundary Map
 
 ### S01 → S02
 
 Produces:
-- `AutoPhase` extended with `"scope"` — all phase transition logic works for single-milestone scope
-- `AutoState` with optional `milestoneId` (empty string when scope hasn't completed)
-- `buildScopePrompt()` — prompt builder for the scope phase
-- `detectScopedMilestones(cwd, deps)` — scans `.gsd/milestones/` for new CONTEXT.md files after scope completes
-- Scope completion detection in `advancePhase()` — checks for milestone on disk after scope `agent_end`
-- `/issues scope` command and updated `/issues auto` entry point (no milestone required)
+- `buildScopePrompt(options)` — prompt builder for the scope phase (in `lib/smart-entry.ts`)
+- `scanMilestones(cwd)` — reads `.gsd/milestones/` for directories with CONTEXT.md files
+- `detectNewMilestones(before, after)` — pure set-difference function returning new milestone IDs
+- Scope completion detection in `agent_end` handler via CONTEXT.md diffing (`index.ts`)
+- `handleSmartEntry(ctx, deps)` — contextual entry point for `/issues` (in `commands/issues.ts`)
+- `handleAutoEntry(ctx, deps)` — `/issues auto` entry, chains scope → `/gsd auto` via module-scoped flag
+- Module-scoped state: `_autoRequested` (boolean), `_preScopeMilestones` (string[]) with getter/clearer
 - Updated import prompt (framed for scoping, not milestone assessment)
-- Updated `startAuto()` signature accepting optional `milestoneId`
+- `config.milestone` optional — `validateConfig()` accepts missing milestone
 
 Consumes:
 - nothing (first slice)
@@ -77,6 +78,7 @@ Consumes:
 ### S02 consumes from S01
 
 Consumes:
-- `AutoState` shape (extends with `milestoneIds: string[]` and `currentMilestoneIndex: number`)
-- `detectScopedMilestones()` returning multiple milestone IDs
-- Single-milestone scope→plan transition (extends to loop)
+- `scanMilestones(cwd)` / `detectNewMilestones(before, after)` — already returns string[] (multiple milestone IDs)
+- Module-scoped auto flag pattern — may need extension with milestone index for loop state
+- Single-milestone scope→auto chain in `agent_end` handler (extends to loop through all detected milestones)
+- `handleAutoEntry()` resume path (extend to handle multi-milestone resume)
