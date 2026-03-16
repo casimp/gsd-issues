@@ -6,31 +6,19 @@ GSD breaks work into milestones — right-sized chunks with a bounded number of 
 
 ## How It Works
 
+### Manual workflow
+
+Run individual commands to move a milestone through the lifecycle.
+
 ```mermaid
 flowchart TD
-    subgraph manual["Manual (individual commands)"]
-        A[New work] --> C[GSD plans milestones]
-        B[Existing tracker issues] -- "/issues import" --> C
-        C -- "/issues sync" --> E[Issue on tracker]
-        E --> F[Work slices on milestone branch]
-        F -- "/issues pr" --> G["PR/MR with Closes #N"]
-        G --> H[Review & merge]
-        H --> I[Issue auto-closes]
-    end
-
-    subgraph auto["Auto Flow (/issues auto)"]
-        AA["/issues auto"] --> AB[import]
-        AB --> AC[plan]
-        AC --> AD[validate-size]
-        subgraph sizing["Sizing check"]
-            AD -- oversized --> AE[split]
-            AE --> AD
-        end
-        AD -- ok --> AF[sync]
-        AF --> AG[execute]
-        AG --> AH[pr]
-        AH --> AI[done]
-    end
+    A[New work] --> C[GSD plans milestones]
+    B[Existing tracker issues] -- "/issues import" --> C
+    C -- "/issues sync" --> E[Issue on tracker]
+    E --> F[Work slices on milestone branch]
+    F -- "/issues pr" --> G["PR/MR with Closes #N"]
+    G --> H[Review & merge]
+    H --> I[Issue auto-closes]
 ```
 
 **Starting from scratch:** GSD plans your milestones. `/issues sync` creates an issue on the tracker for each one.
@@ -39,15 +27,28 @@ flowchart TD
 
 **Then, for every milestone:** work the slices on a milestone branch. When done, `/issues pr` creates a PR with `Closes #42` in the body. Merge the PR, the issue closes.
 
-**Or, let auto-flow handle it:** `/issues auto` drives the full lifecycle automatically — see below.
+### Auto workflow
 
-## Auto Flow
+`/issues auto` drives the full lifecycle in one command — from existing tracker issues or new work through to a merged PR.
 
-`/issues auto` runs the entire milestone lifecycle as a phase-based state machine, using multiple agent sessions:
+```mermaid
+flowchart TD
+    A[New work or existing issues] --> B["/issues auto"]
+    B --> C[import issues from tracker]
+    C --> D[plan milestone]
+    D --> E{slices ≤ limit?}
+    E -- yes --> G[sync — create tracker issue]
+    E -- no, strict --> F[split into smaller milestones]
+    F --> D
+    E -- no, best_try --> G
+    G --> H[execute — work all slices]
+    H --> I["pr — PR/MR with Closes #N"]
+    I --> J[done]
+```
 
-**import** → **plan** → **validate-size** → [**split** loop] → **sync** → **execute** → **pr** → **done**
+Each phase sends a prompt to the agent via `pi.sendMessage`, waits for completion, then advances. State persists to `.gsd/issues-auto.json` so progress survives restarts.
 
-Each phase sends a prompt to the agent, waits for completion, then advances to the next. State persists to `.gsd/issues-auto.json` so progress survives restarts.
+## Auto Flow Details
 
 ### Sizing constraints
 
