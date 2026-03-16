@@ -29,12 +29,14 @@ flowchart TD
 
 ### Auto workflow
 
-`/issues auto` drives the full lifecycle in one command — from existing tracker issues or new work through to a merged PR.
+`/issues auto <milestone_id>` drives the full lifecycle for an existing milestone in one command — from importing tracker context through planning, sizing, execution, and PR.
+
+The milestone must already exist (at minimum, its `.gsd/milestones/M001/` directory and `M001-CONTEXT.md`). For new work, create the milestone with GSD first (`/gsd`), then hand it to `/issues auto` to plan, size, execute, and PR it.
 
 ```mermaid
 flowchart TD
-    A[New work or existing issues] --> B["/issues auto"]
-    B --> C[import — fetch tracker issues]
+    A["Existing milestone (e.g. M001)"] --> B["/issues auto M001"]
+    B --> C[import — fetch tracker issues as planning context]
     C --> D[plan — agent plans milestone with imports as context]
     D --> E{slices ≤ limit?}
     E -- yes --> G[sync — create tracker issue]
