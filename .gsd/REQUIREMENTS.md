@@ -270,6 +270,17 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — `rescopeIssues()` creates milestone issue via `syncMilestoneToIssue()`, closes originals best-effort with per-issue error collection. Double re-scope guard skips if milestone already mapped. Already-closed originals tolerated. Both command (`--rescope`/`--originals` with confirmation) and tool (`rescope_milestone_id`/`original_issue_ids` params) paths tested. 7 re-scope tests. `gsd-issues:rescope-complete` event emitted. Runtime validation pending UAT.
 - Notes: Builds on M001's import (fetch + format). Adds the re-scope step: close originals, create new milestone issues.
 
+### R027 — Orphan milestone guard at flow entry
+- Class: core-capability
+- Status: validated
+- Description: `/issues` and `/issues auto` block with a clear warning when in-progress milestones exist on disk that aren't tracked in ISSUE-MAP.json, preventing unknown-state milestones from being swept into the flow
+- Why it matters: Without the guard, orphan milestones (created but never synced or completed) could be silently ignored, leading to divergent local/remote state
+- Source: user
+- Primary owning slice: M006/S01
+- Supporting slices: none
+- Validation: contract — `findOrphanMilestones(cwd)` identifies unmapped in-progress milestones (10 tests). Guard at top of both `handleSmartEntry()` and `handleAutoEntry()` blocks with `ctx.ui.notify()` warning and returns early (11 tests). Completed milestones (SUMMARY.md) and mapped milestones (ISSUE-MAP.json with matching localId) excluded. 350 tests total, zero type errors.
+- Notes: Guard fires before any other logic in both entry points. Resolution: `/issues sync` to push to tracker, or remove/archive the milestone.
+
 ## Deferred
 
 ### R017 — Sub-issues for slice visibility (optional)
@@ -348,6 +359,7 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R024 | core-capability | validated | M004/S02 | none | contract |
 | R025 | core-capability | validated | M004/S01 | none | contract |
 | R026 | core-capability | validated | M004/S01 | none | contract |
+| R027 | core-capability | validated | M006/S01 | none | contract |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |
 
@@ -355,5 +367,5 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 - Active requirements: 12
 - Mapped to slices: 12
-- Validated: 11
+- Validated: 12
 - Unmapped active requirements: 0

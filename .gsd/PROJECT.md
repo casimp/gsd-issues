@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-All five milestones (M001–M005) are code-complete. The extension supports the full lifecycle: `/issues` runs a continuous prompted flow — scope → prompted sync → work → prompted PR — with `pi.sendMessage()` confirmation prompts at each outward-facing action. `/issues auto` runs the same lifecycle with auto-confirmations (no prompts). Individual commands (`/issues sync`, `/issues pr`, etc.) work as standalone escape hatches. 330 tests pass across 18 test files. Zero type errors.
+All six milestones (M001–M006) are code-complete. The extension supports the full lifecycle: `/issues` runs a continuous prompted flow — scope → prompted sync → work → prompted PR — with `pi.sendMessage()` confirmation prompts at each outward-facing action. `/issues auto` runs the same lifecycle with auto-confirmations (no prompts). Both entry points include an orphan milestone guard that blocks when unmapped in-progress milestones exist on disk. Individual commands (`/issues sync`, `/issues pr`, etc.) work as standalone escape hatches. 350 tests pass across 18 test files. Zero type errors.
 
 No active milestones remain. Future work would be UAT validation (first real `/issues` run), polish, or new capabilities (sub-issues R017, keyboard shortcuts R020).
 
@@ -44,3 +44,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, orchestration state machine (superseded by M004's hooks approach)
 - [x] M004: Start from work, not milestones — Smart entry, scope phase, agent_end hooks for auto-sync/PR, no milestone ID requirement
 - [x] M005: Continuous prompted flow — `/issues` walks through scope → prompted sync → work → prompted PR with confirmation at each step
+- [x] M006: Orphan milestone guard — Both entry points block when unmapped in-progress milestones exist on disk

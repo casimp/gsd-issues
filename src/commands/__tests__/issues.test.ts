@@ -95,9 +95,14 @@ describe("issues command handleSmartEntry", () => {
 
   it("offers to resume existing milestones when found without GSD state", async () => {
     // Create milestone with CONTEXT.md but no STATE.md
+    // Include ISSUE-MAP.json so it passes the orphan guard
     const mDir = join(tmpDir, ".gsd", "milestones", "M001");
     await mkdir(mDir, { recursive: true });
     await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
+    await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify([{
+      localId: "M001", issueId: 1, provider: "github",
+      url: "https://github.com/o/r/issues/1", createdAt: new Date().toISOString(),
+    }]));
 
     const ctx = makeCtx({
       select: vi.fn(async () => "M001"),
@@ -221,10 +226,14 @@ describe("issues command handleSmartEntry", () => {
   });
 
   it("existing milestone flow: falls through to new milestone when __new__ selected", async () => {
-    // Create milestone with CONTEXT.md
+    // Create milestone with CONTEXT.md + ISSUE-MAP.json (passes orphan guard)
     const mDir = join(tmpDir, ".gsd", "milestones", "M001");
     await mkdir(mDir, { recursive: true });
     await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
+    await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify([{
+      localId: "M001", issueId: 1, provider: "github",
+      url: "https://github.com/o/r/issues/1", createdAt: new Date().toISOString(),
+    }]));
 
     const ctx = makeCtx({
       // First select: existing milestones → choose new
@@ -483,10 +492,14 @@ describe("issues command handleAutoEntry", () => {
   });
 
   it("auto entry with existing milestone: skips scope and sends /gsd auto directly", async () => {
-    // Create existing milestone
+    // Create existing milestone (mapped — passes orphan guard)
     const mDir = join(tmpDir, ".gsd", "milestones", "M001");
     await mkdir(mDir, { recursive: true });
     await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
+    await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify([{
+      localId: "M001", issueId: 1, provider: "github",
+      url: "https://github.com/o/r/issues/1", createdAt: new Date().toISOString(),
+    }]));
 
     const ctx = makeCtx();
     const pi = makePi();
@@ -668,9 +681,14 @@ describe("issues command handleAutoEntry", () => {
     const handler = issuesCall![1].handler as (args: string, ctx: ExtensionCommandContext) => Promise<void>;
 
     // Create a milestone so we hit the resume path (simplest to verify routing)
+    // Include ISSUE-MAP.json to pass orphan guard
     const mDir = join(tmpDir, ".gsd", "milestones", "M001");
     await mkdir(mDir, { recursive: true });
     await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
+    await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify([{
+      localId: "M001", issueId: 1, provider: "github",
+      url: "https://github.com/o/r/issues/1", createdAt: new Date().toISOString(),
+    }]));
 
     const ctx = makeCtx();
     await handler("auto", ctx);
@@ -773,13 +791,21 @@ describe("agent_end hooks", () => {
 
   it("sync hook fires when ROADMAP.md exists and milestone is unmapped", async () => {
     const config: Config = { provider: "github", github: { repo: "o/r" } };
-    await writeMilestoneWithRoadmap("M001", { config });
+    // Write config first, but don't create milestone yet — avoid orphan guard
+    await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+    await writeFile(join(tmpDir, ".gsd", "issues.json"), JSON.stringify(config));
 
-    // Enable hooks via auto entry resume path
+    // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
-    const ctx = makeCtx();
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Build something"),
+    });
     const pi2 = makePi();
     await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Now create the milestone (simulates agent creating it during scope)
+    await writeMilestoneWithRoadmap("M001");
 
     const { pi, agentEndHandler } = await setupExtension();
     await agentEndHandler();
@@ -933,17 +959,20 @@ describe("agent_end hooks", () => {
   });
 
   it("hooks handle missing config gracefully (no-op)", async () => {
-    // Create milestone with ROADMAP but NO config file
+    // Enable hooks via auto entry fresh-start path (no milestones, no config)
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Build something"),
+    });
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Now create milestone with ROADMAP but NO config file
     const mDir = join(tmpDir, ".gsd", "milestones", "M001");
     await mkdir(mDir, { recursive: true });
     await writeFile(join(mDir, "M001-CONTEXT.md"), "# M001\n");
     await writeFile(join(mDir, "M001-ROADMAP.md"), "# Roadmap\n");
-
-    // Enable hooks via auto entry — milestone exists so resume path fires
-    const issuesModule = await import("../../commands/issues.js");
-    const ctx = makeCtx();
-    const pi2 = makePi();
-    await issuesModule.handleAutoEntry("", ctx, pi2);
 
     const { agentEndHandler } = await setupExtension();
 
@@ -958,12 +987,21 @@ describe("agent_end hooks", () => {
 
   it("sync hook catches errors without throwing", async () => {
     const config: Config = { provider: "github", github: { repo: "o/r" } };
-    await writeMilestoneWithRoadmap("M001", { config });
+    // Write config first, create milestone after enabling hooks
+    await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+    await writeFile(join(tmpDir, ".gsd", "issues.json"), JSON.stringify(config));
 
+    // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
-    const ctx = makeCtx();
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Build something"),
+    });
     const pi2 = makePi();
     await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Now create the milestone
+    await writeMilestoneWithRoadmap("M001");
 
     // Make sync throw
     const syncModule = await import("../../lib/sync.js");
@@ -1131,13 +1169,21 @@ describe("agent_end prompted flow", () => {
 
   it("does not send prompts when hooks are enabled (mutual exclusion)", async () => {
     const config: Config = { provider: "github", github: { repo: "o/r" } };
-    await writeMilestoneWithRoadmap("M001", { config });
+    // Write config first, create milestone after enabling hooks
+    await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+    await writeFile(join(tmpDir, ".gsd", "issues.json"), JSON.stringify(config));
 
-    // Enable hooks via auto entry, which also sets _hooksEnabled = true
+    // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
-    const ctx = makeCtx();
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Build something"),
+    });
     const pi2 = makePi();
     await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Now create the milestone (simulates agent creating it during scope)
+    await writeMilestoneWithRoadmap("M001");
 
     // Now also enable prompted flow — hooks should take priority
     issuesModule.setPromptedFlowEnabled();
@@ -1204,5 +1250,288 @@ describe("agent_end prompted flow", () => {
     await issuesModule.handleAutoEntry("", ctx, pi);
 
     expect(issuesModule.isPromptedFlowEnabled()).toBe(false);
+  });
+});
+
+// ── Orphan milestone guard tests ──
+
+describe("orphan milestone guard — handleSmartEntry", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "issues-orphan-smart-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
+    clearPreScopeMilestones();
+    clearAutoRequested();
+    clearHookState();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeMilestone(mid: string, opts?: { summary?: boolean; issueMap?: IssueMapEntry[] }) {
+    const mDir = join(tmpDir, ".gsd", "milestones", mid);
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, `${mid}-CONTEXT.md`), `# ${mid} — Context\n`);
+
+    if (opts?.summary) {
+      await writeFile(join(mDir, `${mid}-SUMMARY.md`), `---\nstatus: complete\n---\n# ${mid} Summary\n`);
+    }
+    if (opts?.issueMap) {
+      await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify(opts.issueMap));
+    }
+  }
+
+  it("blocks when orphan milestone exists", async () => {
+    // M001 has CONTEXT.md but no SUMMARY.md and no ISSUE-MAP.json → orphan
+    await writeMilestone("M001");
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("orphan milestone"),
+      "warning",
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("M001"),
+      "warning",
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("/issues sync"),
+      "warning",
+    );
+    // Should not fall through to config/state checks
+    expect(pi.sendMessage).not.toHaveBeenCalled();
+    expect(ctx.ui.select).not.toHaveBeenCalled();
+  });
+
+  it("blocks with multiple orphan IDs listed", async () => {
+    await writeMilestone("M001");
+    await writeMilestone("M003");
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("M001, M003"),
+      "warning",
+    );
+    expect(pi.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes through when no milestones exist", async () => {
+    // No .gsd/milestones at all
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Do some work"),
+    });
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    // Should not have received a warning — continued to normal flow
+    const warnCalls = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (args) => args[1] === "warning",
+    );
+    // The only warning calls should not mention "orphan"
+    for (const [msg] of warnCalls) {
+      expect(msg).not.toContain("orphan");
+    }
+  });
+
+  it("passes through when milestone is completed (has SUMMARY.md)", async () => {
+    await writeMilestone("M001", { summary: true });
+
+    const ctx = makeCtx({
+      select: vi.fn(async () => "M001"),
+    });
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    // Should have passed the orphan guard — reached the milestone selection
+    expect(ctx.ui.select).toHaveBeenCalled();
+  });
+
+  it("passes through when milestone is mapped (in ISSUE-MAP.json)", async () => {
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestone("M001", { issueMap });
+
+    const ctx = makeCtx({
+      select: vi.fn(async () => "M001"),
+    });
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    // Should have passed the orphan guard — reached the milestone selection
+    expect(ctx.ui.select).toHaveBeenCalled();
+  });
+
+  it("suggests resolution paths in block message", async () => {
+    await writeMilestone("M001");
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleSmartEntry } = await import("../../commands/issues.js");
+    await handleSmartEntry("", ctx, pi);
+
+    const notifyCall = (ctx.ui.notify as ReturnType<typeof vi.fn>).mock.calls[0];
+    const msg = notifyCall[0] as string;
+    expect(msg).toContain("/issues sync");
+    expect(msg).toMatch(/remove|archive/i);
+  });
+});
+
+describe("orphan milestone guard — handleAutoEntry", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "issues-orphan-auto-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
+    clearPreScopeMilestones();
+    clearAutoRequested();
+    clearHookState();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeMilestone(mid: string, opts?: { summary?: boolean; issueMap?: IssueMapEntry[] }) {
+    const mDir = join(tmpDir, ".gsd", "milestones", mid);
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, `${mid}-CONTEXT.md`), `# ${mid} — Context\n`);
+
+    if (opts?.summary) {
+      await writeFile(join(mDir, `${mid}-SUMMARY.md`), `---\nstatus: complete\n---\n# ${mid} Summary\n`);
+    }
+    if (opts?.issueMap) {
+      await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify(opts.issueMap));
+    }
+  }
+
+  it("blocks when orphan milestone exists", async () => {
+    await writeMilestone("M001");
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleAutoEntry } = await import("../../commands/issues.js");
+    await handleAutoEntry("", ctx, pi);
+
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("orphan milestone"),
+      "warning",
+    );
+    expect(ctx.ui.notify).toHaveBeenCalledWith(
+      expect.stringContaining("M001"),
+      "warning",
+    );
+    // Should not have dispatched /gsd auto or sent scope prompt
+    expect(pi.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("passes through when milestone is completed", async () => {
+    await writeMilestone("M001", { summary: true });
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleAutoEntry } = await import("../../commands/issues.js");
+    await handleAutoEntry("", ctx, pi);
+
+    // Should have passed the guard — resume path fires /gsd auto
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:auto-dispatch",
+        content: "/gsd auto",
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+  });
+
+  it("passes through when milestone is mapped", async () => {
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestone("M001", { issueMap });
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleAutoEntry } = await import("../../commands/issues.js");
+    await handleAutoEntry("", ctx, pi);
+
+    // Should have passed the guard — resume path fires /gsd auto
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:auto-dispatch",
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+  });
+
+  it("passes through when no milestones exist (fresh start)", async () => {
+    const ctx = makeCtx({
+      select: vi.fn(async () => "fresh"),
+      input: vi.fn(async () => "Build something"),
+    });
+    const pi = makePi();
+
+    const { handleAutoEntry, isAutoRequested } = await import("../../commands/issues.js");
+    await handleAutoEntry("", ctx, pi);
+
+    // Should have set auto flag and sent scope prompt
+    expect(isAutoRequested()).toBe(true);
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:scope-prompt",
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+  });
+
+  it("returns early after blocking — no auto flag set", async () => {
+    await writeMilestone("M001");
+
+    const ctx = makeCtx();
+    const pi = makePi();
+
+    const { handleAutoEntry, isAutoRequested } = await import("../../commands/issues.js");
+    await handleAutoEntry("", ctx, pi);
+
+    // Auto flag should NOT be set since we returned early
+    expect(isAutoRequested()).toBe(false);
   });
 });

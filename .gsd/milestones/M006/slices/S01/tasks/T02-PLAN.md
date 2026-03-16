@@ -46,3 +46,9 @@ Add orphan milestone guard calls at the very top of both `handleSmartEntry()` an
 
 - `src/commands/issues.ts` — guard calls at top of both handler functions
 - `src/commands/__tests__/issues.test.ts` — new describe block with 6+ test cases for orphan guard in both handlers
+
+## Observability Impact
+
+- **New signal:** `ctx.ui.notify()` emits a warning-level message listing orphan milestone IDs when the guard blocks entry. Message includes orphan count, IDs, and suggested resolution paths (`/issues sync` or remove/archive).
+- **Inspection:** Call `findOrphanMilestones(cwd)` directly to check orphan state without triggering the guard. Returns `string[]` — empty = clean.
+- **Failure visibility:** When blocked, both handlers return early with no side effects — no auto flag, no hooks enabled, no scope prompt sent. The notify call is the only observable output.

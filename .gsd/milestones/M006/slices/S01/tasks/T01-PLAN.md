@@ -39,6 +39,12 @@ Build the `findOrphanMilestones(cwd)` function in `src/lib/smart-entry.ts`. This
 - `src/lib/issue-map.ts` — `loadIssueMap()` API, `IssueMapEntry` type with `localId` field
 - `src/index.ts` lines 582-589 — SUMMARY.md stat pattern from agent_end handler
 
+## Observability Impact
+
+- **New signal:** `findOrphanMilestones(cwd)` returns `string[]` — empty means all milestones are either completed or mapped; populated means orphans exist. This is the input signal for the T02 guard.
+- **Inspection:** A future agent can call `findOrphanMilestones(cwd)` to understand project health without parsing multiple files manually.
+- **Failure state:** Non-ENOENT filesystem errors from `stat()` and `loadIssueMap()` propagate with file paths in error messages. Corrupt ISSUE-MAP.json throws with the path and index of the invalid entry.
+
 ## Expected Output
 
 - `src/lib/smart-entry.ts` — new exported `findOrphanMilestones(cwd: string): Promise<string[]>` function

@@ -12,6 +12,7 @@
 
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { loadIssueMap } from "./issue-map.js";
 
 // ── Milestone scanner ──
 
@@ -56,6 +57,52 @@ export async function scanMilestones(cwd: string): Promise<string[]> {
   }
 
   return milestoneIds.sort();
+}
+
+// ── Orphan milestone detection ──
+
+/**
+ * Find milestones that are neither completed (SUMMARY.md) nor tracked
+ * in an ISSUE-MAP.json. These are "orphan" milestones that should be
+ * resolved before starting new work.
+ *
+ * Diagnostics:
+ * - Returns `string[]` of orphan milestone IDs (sorted).
+ * - Empty array = all milestones are completed or tracked.
+ * - Non-ENOENT filesystem errors propagate with file paths.
+ * - Corrupt ISSUE-MAP.json throws with path and entry index.
+ */
+export async function findOrphanMilestones(cwd: string): Promise<string[]> {
+  const milestoneIds = await scanMilestones(cwd);
+  const orphans: string[] = [];
+
+  for (const mid of milestoneIds) {
+    const mDir = join(cwd, ".gsd", "milestones", mid);
+
+    // Check for completion: SUMMARY.md exists
+    let completed = false;
+    try {
+      await stat(join(mDir, `${mid}-SUMMARY.md`));
+      completed = true;
+    } catch (err: unknown) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+
+    if (completed) continue;
+
+    // Check for tracking: ISSUE-MAP.json contains this milestone
+    const mapPath = join(mDir, "ISSUE-MAP.json");
+    const entries = await loadIssueMap(mapPath);
+    const mapped = entries.some((e) => e.localId === mid);
+
+    if (!mapped) {
+      orphans.push(mid);
+    }
+  }
+
+  return orphans;
 }
 
 // ── Scope prompt builder ──

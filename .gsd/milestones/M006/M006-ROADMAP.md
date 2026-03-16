@@ -41,7 +41,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Orphan milestone guard utility and entry point wiring** `risk:low` `depends:[]`
+- [x] **S01: Orphan milestone guard utility and entry point wiring** `risk:low` `depends:[]`
   > After this: both `/issues` and `/issues auto` block with a list of orphan milestone IDs when unmapped in-progress milestones exist on disk (proven by contract tests)
 
 ## Boundary Map

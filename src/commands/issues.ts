@@ -20,7 +20,7 @@ import type {
 } from "../index.js";
 import { loadConfig, type Config } from "../lib/config.js";
 import { readGSDState } from "../lib/state.js";
-import { scanMilestones, buildScopePrompt, detectNewMilestones } from "../lib/smart-entry.js";
+import { scanMilestones, buildScopePrompt, detectNewMilestones, findOrphanMilestones } from "../lib/smart-entry.js";
 import { importIssues } from "../lib/import.js";
 import { createProvider } from "../lib/provider-factory.js";
 
@@ -126,6 +126,17 @@ export async function handleSmartEntry(
   pi: ExtensionAPI,
 ): Promise<void> {
   const cwd = process.cwd();
+
+  // Guard: block if orphan milestones exist (not completed, not tracked)
+  const orphans = await findOrphanMilestones(cwd);
+  if (orphans.length > 0) {
+    ctx.ui.notify(
+      `Blocked: ${orphans.length} orphan milestone${orphans.length > 1 ? "s" : ""} found: ${orphans.join(", ")}. ` +
+      `Use /issues sync to push them to the tracker, or remove/archive them before starting new work.`,
+      "warning",
+    );
+    return;
+  }
 
   // Load config — gracefully handle missing config
   let config: Config | null = null;
@@ -271,6 +282,17 @@ export async function handleAutoEntry(
   // Clear prompted flow — auto mode uses hooks, not prompts
   _promptedFlowEnabled = false;
   const cwd = process.cwd();
+
+  // Guard: block if orphan milestones exist (not completed, not tracked)
+  const orphans = await findOrphanMilestones(cwd);
+  if (orphans.length > 0) {
+    ctx.ui.notify(
+      `Blocked: ${orphans.length} orphan milestone${orphans.length > 1 ? "s" : ""} found: ${orphans.join(", ")}. ` +
+      `Use /issues sync to push them to the tracker, or remove/archive them before starting new work.`,
+      "warning",
+    );
+    return;
+  }
 
   // Check for existing milestones — resume path
   const existingMilestones = await scanMilestones(cwd);

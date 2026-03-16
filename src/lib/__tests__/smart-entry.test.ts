@@ -6,6 +6,7 @@ import {
   scanMilestones,
   buildScopePrompt,
   detectNewMilestones,
+  findOrphanMilestones,
 } from "../smart-entry.js";
 
 // ── scanMilestones ──
@@ -181,5 +182,111 @@ describe("smart-entry detectNewMilestones", () => {
     expect(
       detectNewMilestones(["M001"], ["M001", "M005", "M010"]),
     ).toEqual(["M005", "M010"]);
+  });
+});
+
+// ── findOrphanMilestones ──
+
+describe("smart-entry findOrphanMilestones", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "smart-entry-orphan-"));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function writeMilestone(mid: string, opts?: { summary?: boolean; issueMap?: Array<{ localId: string; issueId: number; provider: string; url: string; createdAt: string }> }) {
+    const mDir = join(tmpDir, ".gsd", "milestones", mid);
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, `${mid}-CONTEXT.md`), `# ${mid}\n`);
+    if (opts?.summary) {
+      await writeFile(join(mDir, `${mid}-SUMMARY.md`), `---\nstatus: complete\n---\n# ${mid}\n`);
+    }
+    if (opts?.issueMap) {
+      await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify(opts.issueMap));
+    }
+  }
+
+  it("returns empty when no milestones dir", async () => {
+    expect(await findOrphanMilestones(tmpDir)).toEqual([]);
+  });
+
+  it("returns empty when milestones dir is empty", async () => {
+    await mkdir(join(tmpDir, ".gsd", "milestones"), { recursive: true });
+    expect(await findOrphanMilestones(tmpDir)).toEqual([]);
+  });
+
+  it("detects single orphan milestone", async () => {
+    await writeMilestone("M001");
+    expect(await findOrphanMilestones(tmpDir)).toEqual(["M001"]);
+  });
+
+  it("excludes completed milestone (has SUMMARY.md)", async () => {
+    await writeMilestone("M001", { summary: true });
+    expect(await findOrphanMilestones(tmpDir)).toEqual([]);
+  });
+
+  it("excludes mapped milestone (in ISSUE-MAP.json)", async () => {
+    await writeMilestone("M001", {
+      issueMap: [{
+        localId: "M001",
+        issueId: 1,
+        provider: "github",
+        url: "https://github.com/o/r/issues/1",
+        createdAt: new Date().toISOString(),
+      }],
+    });
+    expect(await findOrphanMilestones(tmpDir)).toEqual([]);
+  });
+
+  it("detects orphan when ISSUE-MAP.json has non-matching localId", async () => {
+    await writeMilestone("M001", {
+      issueMap: [{
+        localId: "M999",
+        issueId: 1,
+        provider: "github",
+        url: "https://github.com/o/r/issues/1",
+        createdAt: new Date().toISOString(),
+      }],
+    });
+    expect(await findOrphanMilestones(tmpDir)).toEqual(["M001"]);
+  });
+
+  it("handles mixed state: one orphan, one completed, one mapped", async () => {
+    await writeMilestone("M001"); // orphan
+    await writeMilestone("M002", { summary: true }); // completed
+    await writeMilestone("M003", {
+      issueMap: [{
+        localId: "M003",
+        issueId: 3,
+        provider: "github",
+        url: "https://github.com/o/r/issues/3",
+        createdAt: new Date().toISOString(),
+      }],
+    }); // mapped
+    expect(await findOrphanMilestones(tmpDir)).toEqual(["M001"]);
+  });
+
+  it("returns multiple orphans sorted", async () => {
+    await writeMilestone("M003");
+    await writeMilestone("M001");
+    expect(await findOrphanMilestones(tmpDir)).toEqual(["M001", "M003"]);
+  });
+
+  it("returns empty when all milestones are both completed and mapped", async () => {
+    await writeMilestone("M001", {
+      summary: true,
+      issueMap: [{
+        localId: "M001",
+        issueId: 1,
+        provider: "github",
+        url: "https://github.com/o/r/issues/1",
+        createdAt: new Date().toISOString(),
+      }],
+    });
+    expect(await findOrphanMilestones(tmpDir)).toEqual([]);
   });
 });
