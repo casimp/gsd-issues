@@ -251,6 +251,41 @@ describe("readGSDState", () => {
     const state = await readGSDState(tmpDir);
     expect(state).toEqual({ milestoneId: "M001-eh88as" });
   });
+
+  it("returns null when active milestone is 'None'", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+    await writeFile(
+      join(tmpDir, ".gsd", "STATE.md"),
+      [
+        "# GSD State",
+        "",
+        "**Active Milestone:** None",
+        "**Active Slice:** None",
+        "**Phase:** idle",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    const state = await readGSDState(tmpDir);
+    expect(state).toBeNull();
+  });
+
+  it("returns null for sentinel values like '—' and 'N/A'", async () => {
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+
+    for (const sentinel of ["—", "-", "N/A", "none"]) {
+      await writeFile(
+        join(tmpDir, ".gsd", "STATE.md"),
+        `**Active Milestone:** ${sentinel}\n`,
+        "utf-8",
+      );
+
+      const state = await readGSDState(tmpDir);
+      expect(state).toBeNull();
+    }
+  });
 });
 
 // ── findRoadmapPath ──

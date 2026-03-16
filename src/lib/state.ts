@@ -96,10 +96,14 @@ export function parseRoadmapSlices(content: string): RoadmapSlice[] {
  */
 const MILESTONE_RE = /\*\*Active Milestone:\*\*\s+(\S+)/;
 
+/** Values that indicate no active milestone (case-insensitive) */
+const NO_MILESTONE_VALUES = new Set(["none", "—", "-", "n/a"]);
+
 /**
  * Read the active milestone ID from `.gsd/STATE.md`.
  *
- * Returns null if the file is missing or doesn't contain an active milestone line.
+ * Returns null if the file is missing, doesn't contain an active milestone line,
+ * or the value is a sentinel like "None".
  */
 export async function readGSDState(
   cwd: string,
@@ -119,7 +123,10 @@ export async function readGSDState(
   const match = MILESTONE_RE.exec(content);
   if (!match) return null;
 
-  return { milestoneId: match[1] };
+  const value = match[1];
+  if (NO_MILESTONE_VALUES.has(value.toLowerCase())) return null;
+
+  return { milestoneId: value };
 }
 
 // ── Integration branch reader ──
