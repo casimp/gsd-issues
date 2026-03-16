@@ -115,30 +115,47 @@ Read `.gsd/DECISIONS.md` — all 45 decisions from M001-M003 are relevant contex
 - Prompt builders for plan, split, sync, execute, pr phases (just need milestone ID to come from state instead of args)
 
 ### Must change
-- `AutoPhase` type needs a `scope` phase before `plan`
-- `startAuto()` must not require a milestone ID — it should accept optional context (imported issues, user description)  
-- `handleAuto()` must not error when no milestone ID is found — that's the normal case
-- Import prompt must not reference a milestone — it's fetching issues to inform scoping, not to assess an existing milestone
-- Plan prompt must reference the milestone created by scoping
-- State machine needs to handle the scope→plan transition (scoping creates milestoneId, subsequent phases use it)
-- Auto-flow needs to loop if scoping creates multiple milestones
-- Tests need updating to cover the "start from nothing" path
+- **Auto mode (`src/lib/auto.ts`, `src/commands/auto.ts`):**
+  - `AutoPhase` type needs a `scope` phase before `plan`
+  - `startAuto()` must not require a milestone ID — it should accept optional context (imported issues, user description)  
+  - `handleAuto()` must not error when no milestone ID is found — that's the normal case
+  - Import prompt must not reference a milestone — it's fetching issues to inform scoping, not to assess an existing milestone
+  - Plan prompt must reference the milestone created by scoping
+  - State machine needs to handle the scope→plan transition (scoping creates milestoneId, subsequent phases use it)
+  - Auto-flow needs to loop if scoping creates multiple milestones
+  - Tests need updating to cover the "start from nothing" path
+
+- **Manual commands (`src/commands/sync.ts`, `src/commands/import.ts`, `src/commands/pr.ts`, `src/commands/close.ts`):**
+  - Currently all resolve milestone from `config.milestone` or GSD state — this is the same problem as auto, just less obvious
+  - `/issues sync` should work without a milestone ID: if GSD has a current milestone, use it; if not, tell the user to scope first or run auto
+  - `/issues import` already works without a milestone (it just fetches issues) — but after import, there's no way to go from "here are issues" to "create milestones from them" without auto mode. The manual path needs a scoping step too — either built into import (e.g. `/issues import --scope`) or as a separate `/issues scope` command
+  - `/issues pr` and `/issues close` legitimately need a milestone (you're PR-ing or closing something that exists) — these can keep resolving from GSD state, but should give better errors when no milestone is active
+  - The manual workflow as a whole needs to make sense as a sequence a user can follow without knowing milestone IDs: import → scope → sync → work → pr
 
 ### README
 - Must accurately describe both entry points (existing issues, greenfield)
 - Must show that users never specify milestone IDs
-- Mermaid diagram must show scoping as the entry point
+- Must show both manual and auto workflows with scoping as the entry point
+- Mermaid diagrams must show the complete flow for both modes
 
 ## Success Criteria
 
+### Auto mode
 - `/issues auto` works with no arguments — the agent asks what to build or imports from tracker
 - `/issues auto` works with `--issues 10,11,12` — scopes those tracker issues into right-sized milestones  
 - Scoping creates milestones bounded by `max_slices_per_milestone`
 - After scoping, the existing plan→validate-size→sync→execute→pr flow runs for each milestone
-- Manual workflow supports the same two entry points without requiring milestone IDs
+
+### Manual mode
+- A user can go from "I have tracker issues" to "milestones planned and synced" using manual commands, without ever typing a milestone ID
+- A user can go from "I want to build something new" to "milestone planned and synced" using manual commands, without ever typing a milestone ID
+- `/issues sync` and `/issues pr` resolve the active milestone from GSD state without the user specifying one
+- The manual command sequence is documented and makes sense as a workflow
+
+### Both modes
 - Users never need to know what a milestone ID is
 - All existing tests continue passing (with updates for changed interfaces)
-- README documents the actual user-facing workflow
+- README documents both manual and auto workflows accurately
 - 309 existing tests updated/preserved, new tests cover scoping
 
 ## Technical Constraints
