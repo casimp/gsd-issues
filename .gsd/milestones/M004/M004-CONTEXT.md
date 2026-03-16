@@ -7,12 +7,13 @@
 
 Every command in gsd-issues requires a milestone ID. Users don't have milestone IDs — they have work to do. The step that turns work into right-sized milestones doesn't exist.
 
-Users start from one of two places:
+Users start from one of three places:
 
-1. "I have issues on my tracker I want to work on" → **existing work**
+1. "I have issues on my tracker I want to work on" → **existing issues**
 2. "I want to build something new" → **greenfield**
+3. "I'm in the middle of something" → **resume** (pick up active milestone from GSD state)
 
-In both cases, the extension should create right-sized milestones (bounded by `max_slices_per_milestone`) from the user's work. The user should never need to know what a milestone ID is.
+Case 3 already works — the code resolves the active milestone from GSD state. The problem is cases 1 and 2 don't work at all. When there's nothing to resume, the extension errors instead of starting scoping.
 
 M003 built sizing validation, a phase-based orchestration state machine, split retry, and mutual exclusion — all mechanically correct, all tested (43 orchestration tests, 309 total). But it pointed everything at a pre-existing milestone ID instead of building the entry point that creates milestones from work.
 
@@ -87,6 +88,7 @@ Read `.gsd/DECISIONS.md` — all 45 decisions. Key ones to keep:
 ## Success Criteria
 
 - The extension works from "I have work" to "milestones planned and synced" — no milestone ID ever specified by the user
+- When work is already in progress (active milestone in GSD state), the extension resumes it — this already works, must not break
 - Scoping creates right-sized milestones bounded by `max_slices_per_milestone`
 - Existing issues entry: user points at tracker issues, extension scopes them into milestones
 - Greenfield entry: user describes what to build, extension creates milestones
@@ -94,7 +96,7 @@ Read `.gsd/DECISIONS.md` — all 45 decisions. Key ones to keep:
 - After scoping, the existing plan→validate-size→sync→execute→pr pipeline works for each milestone
 - All 309 existing tests continue passing (with updates for changed interfaces)
 - New tests cover scoping
-- README documents both entry points accurately
+- README documents all three entry points (existing issues, greenfield, resume) accurately
 
 ## Technical Constraints
 
