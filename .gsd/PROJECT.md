@@ -12,7 +12,9 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), M003 (Milestone Sizing), M004 (Start From Work, Not Milestones), and M005 (Continuous Prompted Flow) are code-complete. The extension now supports the full lifecycle: `/issues` runs a continuous prompted flow — scope → prompted sync → work → prompted PR — with `pi.sendMessage()` confirmation prompts at each outward-facing action. `/issues auto` runs the same lifecycle with auto-confirmations (no prompts). Individual commands (`/issues sync`, `/issues pr`, etc.) work as standalone escape hatches. 330 tests pass across 18 test files. README documents the prompted flow as the primary path.
+All five milestones (M001–M005) are code-complete. The extension supports the full lifecycle: `/issues` runs a continuous prompted flow — scope → prompted sync → work → prompted PR — with `pi.sendMessage()` confirmation prompts at each outward-facing action. `/issues auto` runs the same lifecycle with auto-confirmations (no prompts). Individual commands (`/issues sync`, `/issues pr`, etc.) work as standalone escape hatches. 330 tests pass across 18 test files. Zero type errors.
+
+No active milestones remain. Future work would be UAT validation (first real `/issues` run), polish, or new capabilities (sub-issues R017, keyboard shortcuts R020).
 
 ## Architecture / Key Patterns
 
@@ -28,6 +30,7 @@ M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Wo
 - **Commands:** `/issues` with subcommands: setup, sync, import, close, pr, auto, scope, status (status stubbed). No-subcommand runs smart entry.
 - **Smart entry:** `/issues` detects project state (active milestone → resume, existing milestones → offer resume or new, no milestones → scope). `/issues auto` chains scope → GSD auto-mode via `pi.sendMessage`.
 - **Scope flow:** `buildScopePrompt()` constructs LLM instructions; `agent_end` handler detects new CONTEXT.md files via diffing; `gsd-issues:scope-complete` event emitted on completion.
+- **Prompted flow:** `agent_end` handler has a prompted branch — when `_promptedFlowEnabled && !isHooksEnabled()`, sends `pi.sendMessage()` for sync (ROADMAP.md) and PR (SUMMARY.md) with `triggerTurn: true`. Dedup via `markSynced()`/`markPrd()`.
 - **Distribution:** npm package with pi manifest, installed via pi's package manager
 
 ## Capability Contract
