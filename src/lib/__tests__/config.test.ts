@@ -74,10 +74,23 @@ describe("validateConfig", () => {
     expect(result.errors[0]).toContain('must be "github" or "gitlab"');
   });
 
-  it("reports missing milestone", () => {
-    const result = validateConfig({ provider: "github", github: { repo: "o/r" } });
-    expect(result.valid).toBe(false);
-    expect(result.errors).toContain('Missing required field: "milestone"');
+  it("accepts config without milestone (optional field)", () => {
+    const result = validateConfig({
+      provider: "github",
+      github: { repo: "o/r" },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("accepts config with valid milestone", () => {
+    const result = validateConfig({
+      provider: "github",
+      milestone: "Sprint 3",
+      github: { repo: "o/r" },
+    });
+    expect(result.valid).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it("reports wrong type for milestone", () => {
@@ -198,8 +211,9 @@ describe("validateConfig", () => {
   it("collects ALL errors, not just the first", () => {
     const result = validateConfig({});
     expect(result.valid).toBe(false);
-    // Should have at least provider and milestone errors
-    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+    // Should have at least provider error
+    expect(result.errors.length).toBeGreaterThanOrEqual(1);
+    expect(result.errors.some((e) => e.includes('"provider"'))).toBe(true);
   });
 
   it("allows extra fields to pass through", () => {
@@ -454,6 +468,7 @@ describe("loadConfig / saveConfig", () => {
     } catch (err: unknown) {
       const msg = (err as Error).message;
       expect(msg).toContain('"provider"');
+      // milestone: 123 should trigger a type error (not string)
       expect(msg).toContain('"milestone"');
     }
   });
@@ -484,5 +499,19 @@ describe("loadConfig / saveConfig", () => {
     await saveConfig(tmpDir, config);
     const raw = await readFile(join(tmpDir, ".gsd", "issues.json"), "utf-8");
     expect(raw.endsWith("\n")).toBe(true);
+  });
+
+  it("round-trips a config without milestone", async () => {
+    const config: Config = {
+      provider: "github",
+      github: { repo: "o/r" },
+    };
+
+    await saveConfig(tmpDir, config);
+    const loaded = await loadConfig(tmpDir);
+
+    expect(loaded.provider).toBe("github");
+    expect(loaded.milestone).toBeUndefined();
+    expect(loaded.github?.repo).toBe("o/r");
   });
 });

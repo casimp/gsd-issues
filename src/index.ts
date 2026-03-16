@@ -2,7 +2,7 @@
  * gsd-issues extension entry point.
  *
  * Registers the `/issues` command with subcommand routing and
- * the `gsd_issues_sync`, `gsd_issues_close`, `gsd_issues_pr`, and `gsd_issues_auto` LLM-callable tools.
+ * the `gsd_issues_sync`, `gsd_issues_close`, `gsd_issues_pr`, and `gsd_issues_import` LLM-callable tools.
  *
  * Subcommands: setup, sync, import, close, pr, auto, status.
  *
@@ -12,8 +12,6 @@
  * - Config/provider errors surface with actionable messages
  * - Close result: gsd-issues:close-complete event emitted on success
  * - PR result: gsd-issues:pr-complete event emitted on success
- * - Auto: agent_end handler no-ops when auto inactive (isAutoActive guard)
- * - Auto: gsd-issues:auto-phase events emitted on phase transitions
  */
 
 import { Type, type Static } from "@sinclair/typebox";
@@ -388,49 +386,6 @@ export default function (pi: ExtensionAPI): void {
     },
   });
 
-  // Register the auto tool for LLM callers
-  const AutoToolSchema = Type.Object({
-    milestone_id: Type.Optional(Type.String({ description: "Milestone ID to run the auto-flow for (e.g. M001). Resolved from config or GSD state if omitted." })),
-  });
-  type AutoToolParams = Static<typeof AutoToolSchema>;
-
-  pi.registerTool({
-    name: "gsd_issues_auto",
-    label: "Auto Flow",
-    description:
-      "Start the auto-flow orchestration for a GSD milestone. Drives the full lifecycle — import, plan, size-check, split, sync, execute, PR — using multiple agent sessions.",
-    parameters: AutoToolSchema,
-    async execute(_toolCallId: string, params: unknown, _signal: AbortSignal, _onUpdate: unknown, ctx: ExtensionCommandContext): Promise<ToolResult> {
-      const typedParams = params as AutoToolParams;
-      // Build args string to reuse command handler logic
-      const args = typedParams.milestone_id ? `auto ${typedParams.milestone_id}` : "auto";
-
-      const { handleAuto } = await import("./commands/auto.js");
-      await handleAuto(args, ctx, pi);
-
-      // handleAuto reports via ctx.ui.notify, but tool needs a ToolResult
-      return {
-        content: [{ type: "text", text: "Auto-flow initiated. Progress will be driven via agent sessions." }],
-      };
-    },
-  });
-
-  // Register agent_end handler for auto-flow phase advancement
-  pi.on("agent_end", async () => {
-    const { isAutoActive, advancePhase } = await import("./lib/auto.js");
-    const cwd = process.cwd();
-
-    // No-op when auto is not active — avoids interfering with GSD auto's own agent_end handler
-    if (!isAutoActive(cwd)) return;
-
-    const { getStashedContext, buildAutoDeps } = await import("./commands/auto.js");
-    const stashed = getStashedContext();
-    if (!stashed) return;
-
-    const deps = buildAutoDeps(stashed.ctx, stashed.pi);
-    await advancePhase(deps);
-  });
-
   pi.registerCommand("issues", {
     description:
       "gsd-issues: manage GitHub/GitLab issues — /issues setup|sync|import|close|pr|auto|status",
@@ -452,10 +407,8 @@ export default function (pi: ExtensionAPI): void {
         ?.toLowerCase();
 
       if (!subcommand) {
-        ctx.ui.notify(
-          "Usage: /issues <setup|sync|import|close|pr|auto|status>",
-          "info",
-        );
+        const { handleSmartEntry } = await import("./commands/issues.js");
+        await handleSmartEntry(args, ctx, pi);
         return;
       }
 
@@ -492,8 +445,8 @@ export default function (pi: ExtensionAPI): void {
         }
 
         case "auto": {
-          const { handleAuto } = await import("./commands/auto.js");
-          await handleAuto(args, ctx, pi);
+          const { handleAutoEntry } = await import("./commands/issues.js");
+          await handleAutoEntry(args, ctx, pi);
           return;
         }
 
@@ -511,5 +464,52 @@ export default function (pi: ExtensionAPI): void {
           );
       }
     },
+  });
+
+  // ── Scope completion detection via agent_end ──
+  pi.on("agent_end", async () => {
+    const { getPreScopeMilestones, clearPreScopeMilestones, isAutoRequested, clearAutoRequested } = await import("./commands/issues.js");
+    const { scanMilestones, detectNewMilestones } = await import("./lib/smart-entry.js");
+
+    const before = getPreScopeMilestones();
+    if (before === null) return; // No scope in progress
+
+    const cwd = process.cwd();
+    const after = await scanMilestones(cwd);
+    const newMilestones = detectNewMilestones(before, after);
+
+    // Always clear the snapshot — scope detection is one-shot
+    clearPreScopeMilestones();
+
+    if (newMilestones.length > 0) {
+      pi.events.emit("gsd-issues:scope-complete", {
+        milestoneIds: newMilestones,
+        count: newMilestones.length,
+      });
+
+      // Chain into GSD auto-mode when auto was requested
+      if (isAutoRequested()) {
+        clearAutoRequested();
+
+        pi.events.emit("gsd-issues:auto-start", {
+          milestoneIds: newMilestones,
+          trigger: "scope-complete",
+        });
+
+        pi.sendMessage(
+          {
+            customType: "gsd-issues:auto-dispatch",
+            content: "/gsd auto",
+            display: false,
+          },
+          { triggerTurn: true },
+        );
+      }
+    } else {
+      // Scope didn't produce milestones — clear auto flag to prevent stuck state
+      if (isAutoRequested()) {
+        clearAutoRequested();
+      }
+    }
   });
 }

@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), and M003 (Milestone Sizing and Auto-Flow Orchestration) are code-complete with 309 tests. However, M003 has a critical design gap: the entire auto-flow and all manual commands require a pre-existing milestone ID. Users don't think in milestones — they have work to do (existing tracker issues or greenfield). The extension should create right-sized milestones from the user's work, not require them as input. M004 fixes this.
+M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), and M003 (Milestone Sizing) are code-complete. M004 S01 replaced M003's orchestration state machine with a smart entry flow: `/issues` with no milestone detects project state, offers import-from-tracker or start-fresh, sends a scope prompt to the LLM, and detects completion via CONTEXT.md diffing. `/issues auto` chains scope into GSD auto-mode. Config milestone is now optional. 308 tests pass across 18 test files. S02 (multi-milestone sequencing and README) is next.
 
 ## Architecture / Key Patterns
 
@@ -24,9 +24,10 @@ M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Wo
 - **Mapping:** `ISSUE-MAP.json` per milestone in `.gsd/milestones/{MID}/`, crash-safe writes (save after each creation), localId holds milestone ID
 - **Close model:** PR-driven via `Closes #N` in PR body (platform auto-close on merge). Manual `/issues close` as fallback. No lifecycle hooks.
 - **Event bus:** Emits `gsd-issues:sync-complete`, `gsd-issues:close-complete`, `gsd-issues:pr-complete`, `gsd-issues:rescope-complete`, `gsd-issues:import-complete` on `pi.events`
-- **Tools:** Five LLM-callable tools registered via `pi.registerTool()` with TypeBox schemas (sync, close, import, pr, auto)
-- **Commands:** `/issues` with subcommands: setup, sync, import, close, pr, auto, status (status stubbed)
-- **Auto-flow:** Phase-based state machine (`import → plan → validate-size → [split] → sync → execute → pr → done`) with injected deps, mutual exclusion via lock files, crash recovery via PID checks
+- **Tools:** Four LLM-callable tools registered via `pi.registerTool()` with TypeBox schemas (sync, close, import, pr)
+- **Commands:** `/issues` with subcommands: setup, sync, import, close, pr, auto, status (status stubbed). No-subcommand runs smart entry.
+- **Smart entry:** `/issues` detects project state (active milestone → resume, existing milestones → offer resume or new, no milestones → scope). `/issues auto` chains scope → GSD auto-mode via `pi.sendMessage`.
+- **Scope flow:** `buildScopePrompt()` constructs LLM instructions; `agent_end` handler detects new CONTEXT.md files via diffing; `gsd-issues:scope-complete` event emitted on completion.
 - **Distribution:** npm package with pi manifest, installed via pi's package manager
 
 ## Capability Contract

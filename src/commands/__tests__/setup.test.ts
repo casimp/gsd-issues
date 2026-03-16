@@ -631,4 +631,79 @@ describe("handleSetup", () => {
     expect(summaryText).toContain("max_slices_per_milestone: 3");
     expect(summaryText).toContain("sizing_mode: strict");
   });
+
+  it("skipping milestone produces config without milestone field", async () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+
+    const exec = routedExec([
+      gitRemoteRoute("https://github.com/owner/repo.git"),
+      ghMilestoneRoute([{ title: "v1.0", number: 1 }]),
+      ghAuthRoute("octocat"),
+    ]);
+
+    // Select milestone → skip
+    ui.select.mockResolvedValueOnce("__skip__");
+    // Assignee
+    ui.input.mockResolvedValueOnce("octocat");
+    // Done label
+    ui.input.mockResolvedValueOnce("");
+    // Branch pattern
+    ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
+    // Labels
+    ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
+    // Project? No
+    ui.confirm.mockResolvedValueOnce(false);
+
+    await handleSetup("setup", ctx, exec);
+
+    const config = await readConfig(tempDir);
+    expect(config.provider).toBe("github");
+    expect(config.milestone).toBeUndefined();
+    expect(config.assignee).toBe("octocat");
+
+    // Summary should show "(not set)" for milestone
+    const summaryCall = ui.notify.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("✓ Config saved"),
+    );
+    expect(summaryCall).toBeDefined();
+    expect(summaryCall![0] as string).toContain("(not set)");
+  });
+
+  it("empty milestone list with empty input skips milestone", async () => {
+    const ui = makeUI();
+    const ctx = makeCtx(ui);
+
+    const exec = routedExec([
+      gitRemoteRoute("https://github.com/owner/repo.git"),
+      ghMilestoneRoute([]),
+      ghAuthRoute("octocat"),
+    ]);
+
+    // Milestone manual — empty to skip
+    ui.input.mockResolvedValueOnce("");
+    // Assignee
+    ui.input.mockResolvedValueOnce("octocat");
+    // Done label
+    ui.input.mockResolvedValueOnce("");
+    // Branch pattern
+    ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
+    // Labels
+    ui.input.mockResolvedValueOnce("");
+    // Max slices
+    ui.input.mockResolvedValueOnce("5");
+    // Sizing mode
+    ui.select.mockResolvedValueOnce("best_try");
+    // Project? No
+    ui.confirm.mockResolvedValueOnce(false);
+
+    await handleSetup("setup", ctx, exec);
+
+    const config = await readConfig(tempDir);
+    expect(config.milestone).toBeUndefined();
+  });
 });

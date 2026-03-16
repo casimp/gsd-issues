@@ -52,7 +52,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Scope phase and milestone-free entry** `risk:high` `depends:[]`
+- [x] **S01: Scope phase and milestone-free entry** `risk:high` `depends:[]`
   > After this: `/issues auto` with no milestone starts scoping, detects the created milestone on disk, and transitions to plan. `/issues scope` runs independently. Import prompt updated. Resume path preserved. Proven by contract tests with mocked pi APIs.
 - [ ] **S02: Multi-milestone sequencing and README** `risk:medium` `depends:[S01]`
   > After this: when scope creates multiple milestones, auto-flow loops through each one (plan→validate-size→sync→execute→pr per milestone). README documents all three entry points. Proven by contract tests.

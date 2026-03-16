@@ -261,18 +261,21 @@ export async function handleSetup(
     );
   }
 
-  let milestone: string;
+  let milestone: string | undefined;
   if (milestones.length > 0) {
-    milestone = await ctx.ui.select(
+    const skipOption = { value: "__skip__", label: "(skip — no milestone)" };
+    const selected = await ctx.ui.select(
       "Select a milestone:",
-      milestones.map((m) => ({ value: m.title, label: m.title })),
+      [...milestones.map((m) => ({ value: m.title, label: m.title })), skipOption],
     );
+    milestone = selected === "__skip__" ? undefined : selected;
   } else {
     ctx.ui.notify(
-      "No milestones found. Enter the milestone name manually.",
+      "No milestones found. Enter the milestone name manually, or leave empty to skip.",
       "info",
     );
-    milestone = await ctx.ui.input("Milestone name:");
+    const input = await ctx.ui.input("Milestone name (leave empty to skip):");
+    milestone = input || undefined;
   }
 
   // ── Step 4: Discover current user ──
@@ -384,7 +387,7 @@ export async function handleSetup(
 
   const config: Config = {
     provider,
-    milestone,
+    ...(milestone && { milestone }),
     ...(assignee && { assignee }),
     ...(doneLabel && { done_label: doneLabel }),
     ...(branchPattern && { branch_pattern: branchPattern }),
@@ -413,7 +416,7 @@ export async function handleSetup(
     `✓ Config saved to .gsd/issues.json`,
     ``,
     `  provider: ${config.provider}`,
-    `  milestone: ${config.milestone}`,
+    ...(config.milestone ? [`  milestone: ${config.milestone}`] : [`  milestone: (not set)`]),
     ...(config.assignee ? [`  assignee: ${config.assignee}`] : []),
     ...(config.done_label ? [`  done_label: ${config.done_label}`] : []),
     ...(config.branch_pattern

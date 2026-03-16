@@ -36,7 +36,7 @@ export interface GitHubConfig {
 
 export interface Config {
   provider: "github" | "gitlab";
-  milestone: string;
+  milestone?: string;
   assignee?: string;
   done_label?: string;
   branch_pattern?: string;
@@ -77,10 +77,8 @@ export function validateConfig(config: unknown): {
     );
   }
 
-  // Required: milestone
-  if (!("milestone" in c)) {
-    errors.push('Missing required field: "milestone"');
-  } else if (typeof c.milestone !== "string") {
+  // Optional: milestone (string when present)
+  if ("milestone" in c && typeof c.milestone !== "string") {
     errors.push(
       `Invalid type for "milestone": expected string, got ${typeof c.milestone}`,
     );

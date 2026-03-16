@@ -147,6 +147,61 @@ This file is the explicit capability and coverage contract for gsd-issues.
 - Validation: contract — pi manifest present (pi.extensions: ["./src/index.ts"]), npm pack produces clean tarball (90 files, 77.6kB), tsconfig.build.json excludes tests from dist, registerTool uses single-arg ToolDefinition matching pi's real API (D028), prepublishOnly runs typecheck+test+build, README with installation/setup/usage docs. 188 tests pass. Runtime load validation pending UAT.
 - Notes: package.json with pi manifest, proper exports, README
 
+### R022 — Scope phase
+- Class: core-capability
+- Status: active
+- Description: When no milestone exists, the extension sends a scope prompt to the LLM instructing it to create right-sized milestones under `.gsd/milestones/` with CONTEXT.md files
+- Why it matters: Users start with work, not milestone IDs — the extension creates the structure
+- Source: user
+- Primary owning slice: M004/S01
+- Supporting slices: M004/S02
+- Validation: contract — `buildScopePrompt()` constructs structured prompt with optional sizing/import context (21 tests). Completion detection via CONTEXT.md diffing in `agent_end` handler (3 tests). `gsd-issues:scope-complete` event emitted. Runtime prompt quality is UAT.
+- Notes: Prompt quality validated by first real `/issues` run, not by contract tests
+
+### R023 — /issues scope command
+- Class: core-capability
+- Status: active
+- Description: `/issues scope` runs scoping independently of auto-flow
+- Why it matters: Users may want to scope without starting auto-mode
+- Source: user
+- Primary owning slice: M004/S01
+- Supporting slices: none
+- Validation: partial — scope flow accessible through `/issues` smart entry (no subcommand). Standalone `/issues scope` subcommand not yet implemented.
+- Notes: Smart entry covers the use case; standalone subcommand deferred unless needed
+
+### R024 — Multi-milestone sequencing
+- Class: core-capability
+- Status: active
+- Description: If scope creates multiple milestones, auto-flow loops through each one (plan→validate-size→sync→execute→pr per milestone)
+- Why it matters: Real work often spans multiple milestones — the extension should handle the loop
+- Source: user
+- Primary owning slice: M004/S02
+- Supporting slices: none
+- Validation: unmapped — S02 scope
+- Notes: S01 builds single-milestone scope→plan transition; S02 extends to multi-milestone loop
+
+### R025 — No milestone ID at entry
+- Class: core-capability
+- Status: active
+- Description: `/issues` and `/issues auto` work without a pre-existing milestone ID in config or GSD state
+- Why it matters: Milestone IDs are internal details — users shouldn't need to know them to start
+- Source: user
+- Primary owning slice: M004/S01
+- Supporting slices: none
+- Validation: contract — `config.milestone` optional (D049), smart entry detects state and routes accordingly. 17 tests cover all entry paths (no milestones, existing milestones, active GSD state).
+- Notes: Proven by M004/S01
+
+### R026 — Resume still works
+- Class: core-capability
+- Status: active
+- Description: `/issues auto` with an active milestone in GSD state resumes it without re-scoping
+- Why it matters: Existing behavior must not break — users with in-progress milestones should be able to continue
+- Source: user
+- Primary owning slice: M004/S01
+- Supporting slices: none
+- Validation: contract — resume via GSD state (active milestone notification) and resume via existing milestones on disk (skip scope, dispatch `/gsd auto` directly). 3 tests cover resume paths.
+- Notes: Proven by M004/S01
+
 ## Validated
 
 ### R018 — Milestone sizing config
@@ -173,14 +228,14 @@ This file is the explicit capability and coverage contract for gsd-issues.
 
 ### R021 — Auto-flow orchestration
 - Class: core-capability
-- Status: validated
-- Description: `/issues auto` drives the full milestone lifecycle — import, plan, size-check, split, create issues, execute, PR — using pi.sendMessage and ctx.newSession
+- Status: active
+- Description: `/issues auto` drives the full milestone lifecycle — scope (if needed), then delegates to GSD auto-mode via `/gsd auto` for plan→execute→pr
 - Why it matters: One command drives the entire workflow end-to-end without manual intervention
 - Source: user
-- Primary owning slice: M003/S02
-- Supporting slices: none
-- Validation: contract — 43 tests cover phase-based state machine (all 8 phases), split retry (strict 3x, best_try warn), mutual exclusion (GSD lock, own stale lock, PID liveness), lock/state persistence, newSession cancellation, concurrent dispatch guard, prompt construction, command handler wiring, agent_end handler, tool registration. README documents the flow with mermaid diagram.
-- Notes: Depends on S01's config and sizing validation
+- Primary owning slice: M004/S01
+- Supporting slices: M004/S02
+- Validation: contract — M003's 43-test state machine removed (D046). Replaced by smart entry → scope → GSD auto chain. 17 tests cover smart entry routing, scope prompt construction, completion detection, auto flag management, resume path. M004/S02 will add multi-milestone loop.
+- Notes: Re-scoped in M004 — no longer a parallel state machine, now a thin layer over GSD's auto-mode
 
 ### R014 — PR/MR creation on milestone completion
 - Class: primary-user-loop
@@ -287,13 +342,18 @@ This file is the explicit capability and coverage contract for gsd-issues.
 | R018 | core-capability | validated | M003/S01 | M003/S02 | contract |
 | R019 | core-capability | validated | M003/S01 | M003/S02 | contract |
 | R020 | differentiator | deferred | none | none | unmapped |
-| R021 | core-capability | validated | M003/S02 | none | contract |
+| R021 | core-capability | active | M004/S01 | M004/S02 | contract (re-scoped) |
+| R022 | core-capability | active | M004/S01 | M004/S02 | contract |
+| R023 | core-capability | active | M004/S01 | none | partial |
+| R024 | core-capability | active | M004/S02 | none | unmapped |
+| R025 | core-capability | active | M004/S01 | none | contract |
+| R026 | core-capability | active | M004/S01 | none | contract |
 | R030 | continuity | out-of-scope | none | none | n/a |
 | R031 | constraint | out-of-scope | none | none | n/a |
 
 ## Coverage Summary
 
-- Active requirements: 13
-- Mapped to slices: 13
-- Validated: 6
+- Active requirements: 18
+- Mapped to slices: 18
+- Validated: 5
 - Unmapped active requirements: 0
