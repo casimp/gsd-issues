@@ -35,7 +35,7 @@ export interface ExtensionUI {
   notify(message: string, level?: "info" | "warning" | "error"): void;
   select(
     prompt: string,
-    options: Array<{ value: string; label: string }>,
+    options: string[],
   ): Promise<string>;
   input(prompt: string, defaultValue?: string): Promise<string>;
   confirm(prompt: string): Promise<boolean>;

@@ -115,9 +115,7 @@ describe("issues command handleSmartEntry", () => {
     // Should show select with M001 option
     expect(ctx.ui.select).toHaveBeenCalledWith(
       expect.stringContaining("Existing milestones"),
-      expect.arrayContaining([
-        expect.objectContaining({ value: "M001" }),
-      ]),
+      expect.arrayContaining(["M001"]),
     );
     // Should notify about selected milestone
     expect(ctx.ui.notify).toHaveBeenCalledWith(
@@ -129,7 +127,7 @@ describe("issues command handleSmartEntry", () => {
   it("starts fresh when user chooses 'Start fresh'", async () => {
     // No milestones, no state, no config
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build a login system"),
     });
     const pi = makePi();
@@ -154,7 +152,7 @@ describe("issues command handleSmartEntry", () => {
 
   it("cancels scope when no description provided", async () => {
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => ""),
     });
     const pi = makePi();
@@ -171,7 +169,7 @@ describe("issues command handleSmartEntry", () => {
 
   it("import path: warns when no config exists", async () => {
     const ctx = makeCtx({
-      select: vi.fn(async () => "import"),
+      select: vi.fn(async () => "Import from tracker"),
     });
     const pi = makePi();
 
@@ -198,7 +196,7 @@ describe("issues command handleSmartEntry", () => {
     );
 
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build auth"),
     });
     const pi = makePi();
@@ -213,7 +211,7 @@ describe("issues command handleSmartEntry", () => {
 
   it("records pre-scope milestones for completion detection", async () => {
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi = makePi();
@@ -239,8 +237,8 @@ describe("issues command handleSmartEntry", () => {
       // First select: existing milestones → choose new
       // Second select: import or fresh → choose fresh
       select: vi.fn()
-        .mockResolvedValueOnce("__new__")
-        .mockResolvedValueOnce("fresh"),
+        .mockResolvedValueOnce("Start new milestone")
+        .mockResolvedValueOnce("Start fresh"),
       input: vi.fn(async () => "New work"),
     });
     const pi = makePi();
@@ -298,7 +296,7 @@ describe("issues command scope completion detection", () => {
     // Instead, let's use the module-level setter through the flow
     // Import and manually set pre-scope milestones via a scope prompt flow
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Test work"),
     });
 
@@ -357,7 +355,7 @@ describe("issues command scope completion detection", () => {
 
     // Trigger scope flow to set pre-scope state
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Some work"),
     });
     const { handleSmartEntry, getPreScopeMilestones } = await import("../../commands/issues.js");
@@ -411,7 +409,7 @@ describe("issues scope subcommand", () => {
 
     // No GSD state, no milestones — should hit fresh start path
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Scope work description"),
     });
     await handler("scope", ctx);
@@ -467,7 +465,7 @@ describe("issues command handleAutoEntry", () => {
 
   it("auto entry with no milestones: sets auto flag and runs smart entry", async () => {
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build a dashboard"),
     });
     const pi = makePi();
@@ -546,7 +544,7 @@ describe("issues command handleAutoEntry", () => {
 
     // Run auto entry (no milestones → smart entry path)
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build tests"),
     });
 
@@ -601,7 +599,7 @@ describe("issues command handleAutoEntry", () => {
 
     // Run REGULAR smart entry (not auto)
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Non-auto work"),
     });
 
@@ -645,7 +643,7 @@ describe("issues command handleAutoEntry", () => {
 
     // Run auto entry
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Work that fails to produce milestones"),
     });
 
@@ -798,7 +796,7 @@ describe("agent_end hooks", () => {
     // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi2 = makePi();
@@ -962,7 +960,7 @@ describe("agent_end hooks", () => {
     // Enable hooks via auto entry fresh-start path (no milestones, no config)
     const issuesModule = await import("../../commands/issues.js");
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi2 = makePi();
@@ -994,7 +992,7 @@ describe("agent_end hooks", () => {
     // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi2 = makePi();
@@ -1176,7 +1174,7 @@ describe("agent_end prompted flow", () => {
     // Enable hooks via auto entry fresh-start path (no milestones yet)
     const issuesModule = await import("../../commands/issues.js");
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi2 = makePi();
@@ -1334,7 +1332,7 @@ describe("orphan milestone guard — handleSmartEntry", () => {
   it("passes through when no milestones exist", async () => {
     // No .gsd/milestones at all
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Do some work"),
     });
     const pi = makePi();
@@ -1504,7 +1502,7 @@ describe("orphan milestone guard — handleAutoEntry", () => {
 
   it("passes through when no milestones exist (fresh start)", async () => {
     const ctx = makeCtx({
-      select: vi.fn(async () => "fresh"),
+      select: vi.fn(async () => "Start fresh"),
       input: vi.fn(async () => "Build something"),
     });
     const pi = makePi();

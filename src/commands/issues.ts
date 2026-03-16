@@ -161,18 +161,15 @@ export async function handleSmartEntry(
 
   // If milestones exist but no GSD state, offer to resume one
   if (existingMilestones.length > 0) {
-    const options = existingMilestones.map((id) => ({
-      value: id,
-      label: id,
-    }));
-    options.push({ value: "__new__", label: "Start new milestone" });
+    const options = existingMilestones.map((id) => id);
+    options.push("Start new milestone");
 
     const choice = await ctx.ui.select(
       "Existing milestones found. Resume one or start new?",
       options,
     );
 
-    if (choice !== "__new__") {
+    if (choice !== "Start new milestone") {
       ctx.ui.notify(
         `Selected milestone ${choice}. Use /issues sync to push it to the tracker.`,
         "info",
@@ -186,15 +183,15 @@ export async function handleSmartEntry(
   const entryChoice = await ctx.ui.select(
     "How would you like to start?",
     [
-      { value: "import", label: "Import from tracker" },
-      { value: "fresh", label: "Start fresh" },
+      "Import from tracker",
+      "Start fresh",
     ],
   );
 
   let scopeDescription: string | undefined;
   let importContext: string | undefined;
 
-  if (entryChoice === "import") {
+  if (entryChoice === "Import from tracker") {
     // Import from tracker — need config for provider access
     if (!config) {
       ctx.ui.notify(
@@ -224,7 +221,7 @@ export async function handleSmartEntry(
     }
   }
 
-  if (entryChoice === "fresh" || !importContext) {
+  if (entryChoice === "Start fresh" || !importContext) {
     // Prompt user for work description
     scopeDescription = await ctx.ui.input(
       "Describe the work you want to scope into a milestone:",

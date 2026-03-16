@@ -236,10 +236,10 @@ export async function handleSetup(
       "info",
     );
     const choice = await ctx.ui.select("Select your issue provider:", [
-      { value: "github", label: "GitHub" },
-      { value: "gitlab", label: "GitLab" },
+      "GitHub",
+      "GitLab",
     ]);
-    provider = choice as "github" | "gitlab";
+    provider = choice === "GitLab" ? "gitlab" : "github";
   }
 
   // ── Step 2: Discover repo/project path ──
@@ -263,12 +263,12 @@ export async function handleSetup(
 
   let milestone: string | undefined;
   if (milestones.length > 0) {
-    const skipOption = { value: "__skip__", label: "(skip — no milestone)" };
+    const skipLabel = "(skip — no milestone)";
     const selected = await ctx.ui.select(
       "Select a milestone:",
-      [...milestones.map((m) => ({ value: m.title, label: m.title })), skipOption],
+      [...milestones.map((m) => m.title), skipLabel],
     );
-    milestone = selected === "__skip__" ? undefined : selected;
+    milestone = selected === skipLabel ? undefined : selected;
   } else {
     ctx.ui.notify(
       "No milestones found. Enter the milestone name manually, or leave empty to skip.",
@@ -324,9 +324,10 @@ export async function handleSetup(
   const maxSlicesPerMilestone = parseInt(maxSlicesInput, 10);
 
   const sizingMode = await ctx.ui.select("Sizing mode:", [
-    { value: "best_try", label: "Best try (warn and proceed)" },
-    { value: "strict", label: "Strict (block until right-sized)" },
-  ]) as "strict" | "best_try";
+    "Best try (warn and proceed)",
+    "Strict (block until right-sized)",
+  ]);
+  const sizingValue: "strict" | "best_try" = sizingMode.startsWith("Strict") ? "strict" : "best_try";
 
   // ── Step 6: Provider-specific config ──
 
@@ -393,7 +394,7 @@ export async function handleSetup(
     ...(branchPattern && { branch_pattern: branchPattern }),
     ...(labels.length > 0 && { labels }),
     max_slices_per_milestone: maxSlicesPerMilestone,
-    sizing_mode: sizingMode,
+    sizing_mode: sizingValue,
     ...(gitlabConfig && { gitlab: gitlabConfig }),
     ...(githubConfig && { github: githubConfig }),
   };

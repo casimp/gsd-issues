@@ -174,7 +174,7 @@ describe("handleSetup", () => {
     // Max slices per milestone (default "5")
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode select
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -224,7 +224,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project path (from remote)
     // Project ID (default from discovery: 42)
     ui.input.mockResolvedValueOnce("42");
@@ -263,7 +263,7 @@ describe("handleSetup", () => {
     ]);
 
     // Manual provider selection
-    ui.select.mockResolvedValueOnce("github");
+    ui.select.mockResolvedValueOnce("GitHub");
     // Select milestone
     ui.select.mockResolvedValueOnce("v1.0");
     // Assignee
@@ -277,7 +277,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Repo (manual, no remote)
     ui.input.mockResolvedValueOnce("owner/repo");
     // Project? No
@@ -324,7 +324,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -365,7 +365,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -409,7 +409,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -448,7 +448,7 @@ describe("handleSetup", () => {
     // Max slices (default "5")
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -487,7 +487,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project ID (default 99)
     ui.input.mockResolvedValueOnce("99");
     // Epic? No
@@ -526,7 +526,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? Yes
     ui.confirm.mockResolvedValueOnce(true);
     // Project number
@@ -556,7 +556,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     ui.confirm.mockResolvedValueOnce(false);
 
     await handleSetup("setup", ctx, exec);
@@ -592,7 +592,7 @@ describe("handleSetup", () => {
     // Max slices = 10
     ui.input.mockResolvedValueOnce("10");
     // Sizing mode = strict
-    ui.select.mockResolvedValueOnce("strict");
+    ui.select.mockResolvedValueOnce("Strict (block until right-sized)");
     ui.confirm.mockResolvedValueOnce(false);
 
     await handleSetup("setup", ctx, exec);
@@ -618,7 +618,7 @@ describe("handleSetup", () => {
     ui.input.mockResolvedValueOnce("{issue_id}-gsd/{milestone}/{slice}");
     ui.input.mockResolvedValueOnce("");
     ui.input.mockResolvedValueOnce("3");
-    ui.select.mockResolvedValueOnce("strict");
+    ui.select.mockResolvedValueOnce("Strict (block until right-sized)");
     ui.confirm.mockResolvedValueOnce(false);
 
     await handleSetup("setup", ctx, exec);
@@ -643,7 +643,7 @@ describe("handleSetup", () => {
     ]);
 
     // Select milestone → skip
-    ui.select.mockResolvedValueOnce("__skip__");
+    ui.select.mockResolvedValueOnce("(skip — no milestone)");
     // Assignee
     ui.input.mockResolvedValueOnce("octocat");
     // Done label
@@ -655,7 +655,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
@@ -697,7 +697,7 @@ describe("handleSetup", () => {
     // Max slices
     ui.input.mockResolvedValueOnce("5");
     // Sizing mode
-    ui.select.mockResolvedValueOnce("best_try");
+    ui.select.mockResolvedValueOnce("Best try (warn and proceed)");
     // Project? No
     ui.confirm.mockResolvedValueOnce(false);
 
