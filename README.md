@@ -14,56 +14,29 @@ There are three ways to start:
 
 **Full auto** — `/issues auto` with existing milestones. GSD picks up where it left off and drives planning, execution, sync, and PR automatically — no prompts, no confirmations.
 
-### Prompted workflow (default)
+### The flow
 
-`/issues` runs a continuous flow. After scoping, GSD prompts you at lifecycle milestones:
-
-1. `/issues` — smart entry detects your state and walks you through scoping
-2. **Prompted:** When `ROADMAP.md` is created, GSD asks if you want to sync the milestone to a tracker issue
-3. Work the slices on the milestone branch
-4. **Prompted:** When `SUMMARY.md` is created (milestone complete), GSD asks if you want to create a PR
-5. Review & merge — the issue auto-closes
-
-Each prompt fires once per milestone — re-entering the flow won't re-prompt for milestones already synced or PR'd.
+Both `/issues` and `/issues auto` follow the same lifecycle. The only difference is confirmation: `/issues` prompts you before outward-facing actions (sync, PR), `/issues auto` does them automatically.
 
 ```mermaid
 flowchart TD
-    A["/issues"] --> B{milestones exist?}
+    A["/issues or /issues auto"] --> B{milestones exist?}
     B -- no --> C{import or fresh?}
     C -- import --> D[fetch tracker issues as context]
     C -- fresh --> E[describe what to build]
-    D --> F[GSD scopes and plans milestones]
+    D --> F[GSD scopes milestones]
     E --> F
     B -- yes --> G[resume existing milestone]
-    F --> H[work slices]
+    F --> H[GSD plans — ROADMAP.md created]
     G --> H
-    H -- ROADMAP.md created --> I["prompt: sync to tracker?"]
-    H -- SUMMARY.md created --> J["prompt: create PR?"]
-    J --> K[review & merge — issue auto-closes]
+    H --> I["sync milestone to tracker issue"]
+    I --> J[work slices]
+    J --> K[SUMMARY.md created — milestone complete]
+    K --> L["create PR with Closes #N"]
+    L --> M[review & merge — issue auto-closes]
 ```
 
-### Auto workflow
-
-`/issues auto` is the same lifecycle with auto-confirmations — no prompts, no pauses:
-
-1. If no milestones exist, runs scope (same as `/issues scope`) to create them
-2. Dispatches `/gsd auto` — GSD handles planning and execution
-3. On `ROADMAP.md` creation, a hook automatically syncs the milestone to a tracker issue
-4. On `SUMMARY.md` creation (milestone complete), a hook automatically creates a PR
-
-The hooks are idempotent — re-running `/issues auto` or restarting a session won't duplicate syncs or PRs.
-
-```mermaid
-flowchart TD
-    A["/issues auto"] --> B{milestones exist?}
-    B -- no --> C[scope — describe work or import issues]
-    C --> D[GSD creates milestone directories]
-    B -- yes --> E["/gsd auto" — plan & execute]
-    D --> E
-    E -- ROADMAP.md created --> F[hook: sync milestone to tracker issue]
-    E -- SUMMARY.md created --> G["hook: create PR with Closes #N"]
-    G --> H[review & merge — issue auto-closes]
-```
+With `/issues`, steps I and L are confirmation prompts — you choose whether to proceed. With `/issues auto`, they fire automatically. Either way, each action fires once per milestone — re-entering the flow won't duplicate syncs or PRs.
 
 ### Standalone commands
 
