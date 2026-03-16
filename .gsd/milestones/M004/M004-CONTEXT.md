@@ -102,12 +102,17 @@ Read `.gsd/DECISIONS.md` — all 45 decisions from M001-M003 are relevant contex
 
 ## What Must Change vs What's Salvageable
 
-### Salvageable (don't rewrite)
-- Phase state machine pattern (AutoDeps injection, lock files, state persistence, agent_end handler)
-- Sizing validation (`validateMilestoneSize()`)
-- Config and setup (max_slices, sizing_mode)
+### Salvageable (don't rewrite — this code works and is tested)
+- Phase state machine pattern in `src/lib/auto.ts`: `advancePhase()`, phase transitions, `AutoDeps` injection, `stopAuto()`, `isAutoActive()` — 602 lines, 26 unit tests
+- Sizing validation in `src/lib/sizing.ts`: `validateMilestoneSize()` — 86 lines, 9 tests
+- Split retry logic in `src/lib/auto.ts` (~lines 450-504): strict mode retries 3x, best_try warns and proceeds
+- Mutual exclusion in `src/lib/auto.ts` (~lines 89-150): lock files with PID liveness checks, GSD auto detection
+- State persistence: `writeAutoState()`, `readAutoState()`, lock file helpers
+- Config and setup: `max_slices_per_milestone`, `sizing_mode`, setup wizard — all in `src/lib/config.ts` and `src/commands/setup.ts`
+- agent_end handler in `src/index.ts`: advances phases via stashed context
+- Command handler structure in `src/commands/auto.ts`: `buildAutoDeps()`, stashed context pattern, `getStashedContext()`
 - All provider/sync/close/PR/import library code
-- Mutual exclusion
+- Prompt builders for plan, split, sync, execute, pr phases (just need milestone ID to come from state instead of args)
 
 ### Must change
 - `AutoPhase` type needs a `scope` phase before `plan`
