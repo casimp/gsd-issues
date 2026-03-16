@@ -6,13 +6,12 @@ GSD breaks work into milestones — right-sized chunks with a bounded number of 
 
 ## How It Works
 
-There are three ways to start:
+`/issues` is a single continuous flow. How it starts depends on what exists:
 
-**Start fresh** — no tracker issues yet. `/issues` walks you through describing the work, then GSD creates milestones. As you work, you're prompted to sync and create PRs at the right moments.
+- **No milestones yet** — walks you through describing the work (or importing existing tracker issues), then GSD creates milestones
+- **Milestones exist** — picks up where you left off
 
-**Start from existing issues** — `/issues` and choose "Import from tracker". Open issues are fetched as markdown context, and GSD decomposes them into right-sized milestones.
-
-**Full auto** — `/issues auto` with existing milestones. GSD picks up where it left off and drives planning, execution, sync, and PR automatically — no prompts, no confirmations.
+From there it's the same path: plan → sync to tracker → work slices → create PR → review & merge. `/issues` prompts you before outward-facing actions. `/issues auto` does the same thing without prompts.
 
 ### The flow
 
