@@ -12,7 +12,7 @@ When a GSD milestone is planned, the user is prompted to create a matching issue
 
 ## Current State
 
-M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), M003 (Milestone Sizing), and M004 (Start From Work, Not Milestones) are code-complete. The extension now supports the full lifecycle: `/issues auto` with no milestone scopes work into milestones, delegates to GSD auto-mode, and agent_end hooks automatically sync issues on ROADMAP.md creation and create PRs on SUMMARY.md completion. `/issues scope` runs scoping independently. Config milestone is optional. `auto_pr` config field controls automatic PR creation. 324 tests pass across 18 test files. README documents three entry points (start fresh, start from existing issues, resume) with the current hooks-based architecture.
+M001 (Issue Tracker Integration), M002 (Milestone-Level Issue Tracking and PR Workflow), M003 (Milestone Sizing), M004 (Start From Work, Not Milestones), and M005 (Continuous Prompted Flow) are code-complete. The extension now supports the full lifecycle: `/issues` runs a continuous prompted flow — scope → prompted sync → work → prompted PR — with `pi.sendMessage()` confirmation prompts at each outward-facing action. `/issues auto` runs the same lifecycle with auto-confirmations (no prompts). Individual commands (`/issues sync`, `/issues pr`, etc.) work as standalone escape hatches. 330 tests pass across 18 test files. README documents the prompted flow as the primary path.
 
 ## Architecture / Key Patterns
 
@@ -40,3 +40,4 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M002: Milestone-level issue tracking and PR workflow — One issue per milestone, PR on completion, close on merge, import re-scope
 - [x] M003: Milestone sizing and auto-flow orchestration — Sizing config, validation, orchestration state machine (superseded by M004's hooks approach)
 - [x] M004: Start from work, not milestones — Smart entry, scope phase, agent_end hooks for auto-sync/PR, no milestone ID requirement
+- [x] M005: Continuous prompted flow — `/issues` walks through scope → prompted sync → work → prompted PR with confirmation at each step

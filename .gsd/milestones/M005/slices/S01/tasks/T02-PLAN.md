@@ -43,3 +43,10 @@ Add a new section to the `agent_end` handler in `index.ts` that fires after the 
 ## Expected Output
 
 - `src/index.ts` — new prompted branch in `agent_end` handler after the hooks section
+
+## Observability Impact
+
+- `pi.sendMessage()` with `customType: "gsd-issues:prompted-sync"` — inspectable prompt event when a milestone has a ROADMAP.md but no tracked issue. Content includes milestone ID and `/issues sync` command.
+- `pi.sendMessage()` with `customType: "gsd-issues:prompted-pr"` — inspectable prompt event when a milestone has a SUMMARY.md and a tracked issue. Content includes milestone ID and `/issues pr` command.
+- `markSynced()` / `markPrd()` called before sending — dedup state prevents duplicate prompts on subsequent `agent_end` fires. Same surface as hooks path, queryable via `isSynced()` / `isPrd()`.
+- Guard condition `isPromptedFlowEnabled() && !isHooksEnabled()` — runtime-inspectable via the getter functions to verify which branch fires.

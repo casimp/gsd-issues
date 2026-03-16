@@ -44,3 +44,10 @@ Add tests for the prompted branch in `agent_end`. Use the existing `setupExtensi
 ## Expected Output
 
 - `src/commands/__tests__/issues.test.ts` — 6 new tests in "agent_end prompted flow" describe block
+
+## Observability Impact
+
+- **New test assertions on `pi.sendMessage` customType** — `"gsd-issues:prompted-sync"` and `"gsd-issues:prompted-pr"` are now verified in tests, ensuring the prompted-flow messages are distinguishable from hooks-path events
+- **Dedup surface tested** — `markSynced()` / `markPrd()` prevent re-prompting; test "does not re-prompt" verifies this
+- **Mutual exclusion tested** — `isPromptedFlowEnabled() && !isHooksEnabled()` guard verified in the mutual-exclusion test
+- **Flag lifecycle tested** — `handleAutoEntry` clearing `_promptedFlowEnabled` is directly asserted via `isPromptedFlowEnabled()` getter

@@ -74,6 +74,7 @@ export function clearHookState(): void {
   _syncedMilestones.clear();
   _prdMilestones.clear();
   _hooksEnabled = false;
+  _promptedFlowEnabled = false;
 }
 
 /** Mark a milestone as synced by hooks (also used internally) */
@@ -94,6 +95,26 @@ export function isAutoRequested(): boolean {
 /** Clear auto flag after GSD auto is dispatched or on cleanup */
 export function clearAutoRequested(): void {
   _autoRequested = false;
+}
+
+// ── Prompted flow flag ──
+// Set when `/issues` (bare) enters the scope flow. Tells agent_end to send
+// confirmation prompts instead of auto-firing sync/PR.
+let _promptedFlowEnabled = false;
+
+/** Check if prompted flow is active (scope via bare `/issues`) */
+export function isPromptedFlowEnabled(): boolean {
+  return _promptedFlowEnabled;
+}
+
+/** Enable prompted flow — called from handleSmartEntry when not in auto mode */
+export function setPromptedFlowEnabled(): void {
+  _promptedFlowEnabled = true;
+}
+
+/** Disable prompted flow */
+export function clearPromptedFlowEnabled(): void {
+  _promptedFlowEnabled = false;
 }
 
 /**
@@ -205,6 +226,10 @@ export async function handleSmartEntry(
   }
 
   // Record pre-scope milestone snapshot for completion detection
+  // Enable prompted flow so agent_end sends confirmation prompts (not in auto mode)
+  if (!_autoRequested) {
+    _promptedFlowEnabled = true;
+  }
   preScopeMilestones = await scanMilestones(cwd);
 
   // Build and send scope prompt
@@ -243,6 +268,8 @@ export async function handleAutoEntry(
   ctx: ExtensionCommandContext,
   pi: ExtensionAPI,
 ): Promise<void> {
+  // Clear prompted flow — auto mode uses hooks, not prompts
+  _promptedFlowEnabled = false;
   const cwd = process.cwd();
 
   // Check for existing milestones — resume path

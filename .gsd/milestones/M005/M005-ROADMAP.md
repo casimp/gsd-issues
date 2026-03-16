@@ -42,7 +42,7 @@ This milestone is complete only when all are true:
 
 ## Slices
 
-- [ ] **S01: Prompted flow in agent_end with confirmation messages** `risk:low` `depends:[]`
+- [x] **S01: Prompted flow in agent_end with confirmation messages** `risk:low` `depends:[]`
   > After this: `/issues` (bare) walks user through scope → prompted sync → work → prompted PR as a continuous flow with confirmation at each outward-facing action. Proven by 6+ new tests exercising the `agent_end` prompted branch alongside the existing 324 tests.
 
 ## Boundary Map

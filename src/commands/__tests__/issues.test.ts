@@ -1018,3 +1018,191 @@ describe("agent_end hooks", () => {
     consoleSpy.mockRestore();
   });
 });
+
+// ── agent_end prompted flow tests ──
+
+describe("agent_end prompted flow", () => {
+  let tmpDir: string;
+  let origCwd: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "issues-prompted-"));
+    origCwd = process.cwd();
+    process.chdir(tmpDir);
+    vi.clearAllMocks();
+  });
+
+  afterEach(async () => {
+    process.chdir(origCwd);
+    const { clearPreScopeMilestones, clearAutoRequested, clearHookState } = await import("../../commands/issues.js");
+    clearPreScopeMilestones();
+    clearAutoRequested();
+    clearHookState();
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function setupExtension() {
+    const pi = makePi();
+    const extensionFactory = (await import("../../index.js")).default;
+    extensionFactory(pi);
+
+    const onCalls = (pi.on as ReturnType<typeof vi.fn>).mock.calls;
+    const agentEndCall = onCalls.find(([event]) => event === "agent_end");
+    expect(agentEndCall).toBeDefined();
+    const agentEndHandler = agentEndCall![1] as () => Promise<void>;
+
+    return { pi, agentEndHandler };
+  }
+
+  async function writeMilestoneWithRoadmap(mid: string, opts?: { config?: Config; issueMap?: IssueMapEntry[]; summary?: boolean }) {
+    const mDir = join(tmpDir, ".gsd", "milestones", mid);
+    await mkdir(mDir, { recursive: true });
+    await writeFile(join(mDir, `${mid}-CONTEXT.md`), `# ${mid} — Context\n`);
+    await writeFile(join(mDir, `${mid}-ROADMAP.md`), `# ${mid} — Roadmap\n\n- [ ] **S01: Slice** \`risk:low\` \`depends:[]\`\n`);
+
+    if (opts?.issueMap) {
+      await writeFile(join(mDir, "ISSUE-MAP.json"), JSON.stringify(opts.issueMap));
+    }
+
+    if (opts?.summary) {
+      await writeFile(join(mDir, `${mid}-SUMMARY.md`), `---\nstatus: complete\n---\n# ${mid} Summary\n`);
+    }
+
+    if (opts?.config) {
+      await mkdir(join(tmpDir, ".gsd"), { recursive: true });
+      await writeFile(join(tmpDir, ".gsd", "issues.json"), JSON.stringify(opts.config));
+    }
+  }
+
+  it("sends sync prompt when ROADMAP.md exists and prompted flow is enabled", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    const issuesModule = await import("../../commands/issues.js");
+    issuesModule.setPromptedFlowEnabled();
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    // Should send a sync prompt message
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:prompted-sync",
+        content: expect.stringContaining("/issues sync"),
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+
+    // Should NOT have called the actual sync function
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    expect(syncMilestoneToIssue).not.toHaveBeenCalled();
+  });
+
+  it("sends PR prompt when SUMMARY.md exists, mapped, and prompted flow is enabled", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    const issueMap: IssueMapEntry[] = [{
+      localId: "M001",
+      issueId: 42,
+      provider: "github",
+      url: "https://github.com/o/r/issues/42",
+      createdAt: new Date().toISOString(),
+    }];
+    await writeMilestoneWithRoadmap("M001", { config, issueMap, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    issuesModule.setPromptedFlowEnabled();
+    // Mark synced so it doesn't also fire a sync prompt that could interfere
+    issuesModule.markSynced("M001");
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    expect(pi.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customType: "gsd-issues:prompted-pr",
+        content: expect.stringContaining("/issues pr"),
+      }),
+      expect.objectContaining({ triggerTurn: true }),
+    );
+
+    const { createMilestonePR } = await import("../../lib/pr.js");
+    expect(createMilestonePR).not.toHaveBeenCalled();
+  });
+
+  it("does not send prompts when hooks are enabled (mutual exclusion)", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    // Enable hooks via auto entry, which also sets _hooksEnabled = true
+    const issuesModule = await import("../../commands/issues.js");
+    const ctx = makeCtx();
+    const pi2 = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi2);
+
+    // Now also enable prompted flow — hooks should take priority
+    issuesModule.setPromptedFlowEnabled();
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    // Hooks path should have fired sync
+    const { syncMilestoneToIssue } = await import("../../lib/sync.js");
+    expect(syncMilestoneToIssue).toHaveBeenCalled();
+
+    // Prompted sendMessage should NOT have been called with prompted-sync customType
+    const sendCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const promptedSyncCalls = sendCalls.filter(
+      (args: unknown[]) => (args[0] as { customType?: string })?.customType === "gsd-issues:prompted-sync",
+    );
+    expect(promptedSyncCalls).toHaveLength(0);
+  });
+
+  it("does not re-prompt for already-prompted milestones", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    await writeMilestoneWithRoadmap("M001", { config });
+
+    const issuesModule = await import("../../commands/issues.js");
+    issuesModule.setPromptedFlowEnabled();
+    // Pre-mark as synced — simulates already having been prompted
+    issuesModule.markSynced("M001");
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const sendCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const promptedSyncCalls = sendCalls.filter(
+      (args: unknown[]) => (args[0] as { customType?: string })?.customType === "gsd-issues:prompted-sync",
+    );
+    expect(promptedSyncCalls).toHaveLength(0);
+  });
+
+  it("skips PR prompt when milestone is unmapped", async () => {
+    const config: Config = { provider: "github", github: { repo: "o/r" } };
+    // Write SUMMARY.md but NO ISSUE-MAP.json
+    await writeMilestoneWithRoadmap("M001", { config, summary: true });
+
+    const issuesModule = await import("../../commands/issues.js");
+    issuesModule.setPromptedFlowEnabled();
+
+    const { pi, agentEndHandler } = await setupExtension();
+    await agentEndHandler();
+
+    const sendCalls = (pi.sendMessage as ReturnType<typeof vi.fn>).mock.calls;
+    const promptedPrCalls = sendCalls.filter(
+      (args: unknown[]) => (args[0] as { customType?: string })?.customType === "gsd-issues:prompted-pr",
+    );
+    expect(promptedPrCalls).toHaveLength(0);
+  });
+
+  it("handleAutoEntry clears prompted flow flag", async () => {
+    const issuesModule = await import("../../commands/issues.js");
+    issuesModule.setPromptedFlowEnabled();
+    expect(issuesModule.isPromptedFlowEnabled()).toBe(true);
+
+    const ctx = makeCtx();
+    const pi = makePi();
+    await issuesModule.handleAutoEntry("", ctx, pi);
+
+    expect(issuesModule.isPromptedFlowEnabled()).toBe(false);
+  });
+});

@@ -35,6 +35,12 @@ Update the README to document `/issues` as a continuous prompted flow rather tha
 
 - `README.md` — current content
 
+## Observability Impact
+
+- No runtime signals change — this is a documentation-only task
+- Future agents inspect the README to understand `/issues` vs `/issues auto` flow differences
+- If the README is stale (e.g., describes `/issues` as scope-only), agents may skip prompted-flow features or misadvise users
+
 ## Expected Output
 
 - `README.md` — updated workflow section describing continuous flow

@@ -478,6 +478,7 @@ export default function (pi: ExtensionAPI): void {
       getPreScopeMilestones, clearPreScopeMilestones,
       isAutoRequested, clearAutoRequested,
       isHooksEnabled, isSynced, markSynced, isPrd, markPrd,
+      isPromptedFlowEnabled,
     } = await import("./commands/issues.js");
     const { scanMilestones, detectNewMilestones } = await import("./lib/smart-entry.js");
 
@@ -620,6 +621,85 @@ export default function (pi: ExtensionAPI): void {
           } catch (err) {
             console.error(`[gsd-issues] auto-pr hook failed for ${mid}:`, err instanceof Error ? err.message : err);
           }
+        }
+      }
+    }
+
+    // ── Prompted flow: confirmation prompts for sync and PR ──
+    // Fires when bare `/issues` scope flow was used (not auto-mode).
+    // Instead of auto-executing sync/PR, sends messages that let the LLM
+    // confirm with the user before running the commands.
+    if (isPromptedFlowEnabled() && !isHooksEnabled()) {
+      let promptConfig: Config | null = null;
+      try {
+        promptConfig = await loadConfig(cwd);
+      } catch {
+        // No config — prompted flow is no-op without config
+      }
+
+      if (promptConfig) {
+        const { loadIssueMap: loadPromptMap } = await import("./lib/issue-map.js");
+        const { scanMilestones: scanPrompt } = await import("./lib/smart-entry.js");
+        const { readFile: readPromptFile } = await import("node:fs/promises");
+
+        const promptMilestones = await scanPrompt(cwd);
+
+        // ── Sync prompts: ROADMAP.md exists + unmapped → prompt to sync ──
+        for (const mid of promptMilestones) {
+          const roadmapPath = findRoadmapPath(cwd, mid);
+          try {
+            await readPromptFile(roadmapPath, "utf-8");
+          } catch {
+            continue; // No ROADMAP.md — skip
+          }
+
+          if (isSynced(mid)) continue;
+
+          const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+          const existingMap = await loadPromptMap(mapPath);
+          if (existingMap.some((e) => e.localId === mid)) continue;
+
+          // Mark BEFORE sending to prevent re-prompting on next agent_end
+          markSynced(mid);
+
+          pi.sendMessage(
+            {
+              customType: "gsd-issues:prompted-sync",
+              content: `Milestone ${mid} has been planned (ROADMAP.md created). To create a GitHub tracker issue, run: \`/issues sync ${mid}\`. You can skip this if you don't need issue tracking yet.`,
+              display: false,
+            },
+            { triggerTurn: true },
+          );
+        }
+
+        // ── PR prompts: SUMMARY.md exists + mapped → prompt to create PR ──
+        for (const mid of promptMilestones) {
+          const summaryPath = join(cwd, ".gsd", "milestones", mid, `${mid}-SUMMARY.md`);
+          try {
+            await readPromptFile(summaryPath, "utf-8");
+          } catch {
+            continue; // No SUMMARY.md — skip
+          }
+
+          if (isPrd(mid)) continue;
+
+          const roadmapPath = findRoadmapPath(cwd, mid);
+          const mapPath = join(dirname(roadmapPath), "ISSUE-MAP.json");
+          const { loadIssueMap: loadPrMap } = await import("./lib/issue-map.js");
+          const existingMap = await loadPrMap(mapPath);
+          if (!existingMap.some((e) => e.localId === mid)) continue;
+
+          // Mark BEFORE sending to prevent re-prompting on next agent_end
+          markPrd(mid);
+
+          pi.sendMessage(
+            {
+              customType: "gsd-issues:prompted-pr",
+              content: `Milestone ${mid} is complete (SUMMARY.md created) and has a tracked issue. To create a completion PR, run: \`/issues pr ${mid}\`. You can skip this if a PR isn't needed.`,
+              display: false,
+            },
+            { triggerTurn: true },
+          );
         }
       }
     }

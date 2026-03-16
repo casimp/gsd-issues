@@ -8,21 +8,23 @@ GSD breaks work into milestones — right-sized chunks with a bounded number of 
 
 There are three ways to start:
 
-**Start fresh** — no tracker issues yet. `/issues` (or `/issues scope`) walks you through describing the work, then GSD creates milestones and plans execution.
+**Start fresh** — no tracker issues yet. `/issues` walks you through describing the work, then GSD creates milestones. As you work, you're prompted to sync and create PRs at the right moments.
 
 **Start from existing issues** — `/issues` and choose "Import from tracker". Open issues are fetched as markdown context, and GSD decomposes them into right-sized milestones.
 
-**Resume** — `/issues auto` with existing milestones. GSD picks up where it left off and drives planning, execution, sync, and PR automatically.
+**Full auto** — `/issues auto` with existing milestones. GSD picks up where it left off and drives planning, execution, sync, and PR automatically — no prompts, no confirmations.
 
-### Manual workflow
+### Prompted workflow (default)
 
-Run individual commands to move a milestone through the lifecycle:
+`/issues` runs a continuous flow. After scoping, GSD prompts you at lifecycle milestones:
 
 1. `/issues` — smart entry detects your state and walks you through scoping
-2. `/issues sync` — creates an issue on the tracker for the milestone
+2. **Prompted:** When `ROADMAP.md` is created, GSD asks if you want to sync the milestone to a tracker issue
 3. Work the slices on the milestone branch
-4. `/issues pr` — creates a PR/MR with `Closes #N`
+4. **Prompted:** When `SUMMARY.md` is created (milestone complete), GSD asks if you want to create a PR
 5. Review & merge — the issue auto-closes
+
+Each prompt fires once per milestone — re-entering the flow won't re-prompt for milestones already synced or PR'd.
 
 ```mermaid
 flowchart TD
@@ -33,16 +35,16 @@ flowchart TD
     D --> F[GSD scopes and plans milestones]
     E --> F
     B -- yes --> G[resume existing milestone]
-    F -- "/issues sync" --> H[issue on tracker]
-    G -- "/issues sync" --> H
-    H --> I[work slices on milestone branch]
-    I -- "/issues pr" --> J["PR/MR with Closes #N"]
+    F --> H[work slices]
+    G --> H
+    H -- ROADMAP.md created --> I["prompt: sync to tracker?"]
+    H -- SUMMARY.md created --> J["prompt: create PR?"]
     J --> K[review & merge — issue auto-closes]
 ```
 
 ### Auto workflow
 
-`/issues auto` drives the full lifecycle in one command:
+`/issues auto` is the same lifecycle with auto-confirmations — no prompts, no pauses:
 
 1. If no milestones exist, runs scope (same as `/issues scope`) to create them
 2. Dispatches `/gsd auto` — GSD handles planning and execution
@@ -62,6 +64,17 @@ flowchart TD
     E -- SUMMARY.md created --> G["hook: create PR with Closes #N"]
     G --> H[review & merge — issue auto-closes]
 ```
+
+### Standalone commands
+
+For one-off use outside the continuous flow, each lifecycle step is available as a standalone command:
+
+- `/issues sync` — create a tracker issue for the current milestone
+- `/issues pr` — create a PR/MR from the milestone branch
+- `/issues close` — close a milestone's issue directly (without a PR)
+- `/issues import` — fetch issues from tracker as markdown for planning
+
+These are escape hatches — use them when you need to run a single step without entering the full flow.
 
 ## Providers
 
@@ -155,14 +168,14 @@ All via `/issues <subcommand>` in pi.
 
 | Command | What it does |
 |---|---|
-| `/issues` | Smart entry — detects project state and offers context-appropriate choices |
+| `/issues` | Smart entry — continuous flow: scope → prompted sync → work → prompted PR |
 | `/issues setup` | Interactive config wizard |
 | `/issues scope` | Run the scope flow — describe work, create milestones |
-| `/issues sync` | Create a tracker issue for the current milestone |
-| `/issues pr [id]` | Create a PR/MR from the milestone branch with `Closes #N` |
+| `/issues sync` | Create a tracker issue for the current milestone (standalone) |
+| `/issues pr [id]` | Create a PR/MR from the milestone branch with `Closes #N` (standalone) |
 | `/issues import` | Fetch issues from tracker as markdown for planning |
 | `/issues close [id]` | Close a milestone's issue directly (without a PR) |
-| `/issues auto` | Run the full milestone lifecycle automatically — scope (if needed) → `/gsd auto` → sync → PR |
+| `/issues auto` | Same lifecycle as `/issues` but with auto-confirmations — no prompts, no pauses |
 | `/issues status` | Show status (not yet implemented) |
 
 ### Sync
