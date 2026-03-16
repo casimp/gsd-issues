@@ -68,5 +68,6 @@
 **Scope:** Small — a guard check at the top of smart entry and auto entry. The scanning and map-loading utilities already exist.
 
 **Design questions:**
-- Should completed milestones (SUMMARY.md exists) be treated differently? They might be done but never tracked — blocking on those feels heavy.
 - Should there be a "skip these milestones" option that marks them as intentionally untracked, rather than requiring sync or deletion?
+
+**Note:** Completed milestones (SUMMARY.md exists) are not a concern — GSD won't pick them up for work regardless. The guard only needs to check in-progress milestones (no SUMMARY.md) that aren't in ISSUE-MAP.
