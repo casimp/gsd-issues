@@ -18,21 +18,26 @@ There are three ways to start:
 
 Run individual commands to move a milestone through the lifecycle:
 
-1. GSD plans milestones (or `/issues import` pulls existing tracker issues as planning context)
-2. `/issues sync` creates an issue on the tracker for the milestone
+1. `/issues` — smart entry detects your state and walks you through scoping
+2. `/issues sync` — creates an issue on the tracker for the milestone
 3. Work the slices on the milestone branch
-4. `/issues pr` creates a PR/MR with `Closes #N`
+4. `/issues pr` — creates a PR/MR with `Closes #N`
 5. Review & merge — the issue auto-closes
 
 ```mermaid
 flowchart TD
-    A[New work] --> C[GSD plans milestones]
-    B[Existing tracker issues] -- "/issues import" --> C
-    C -- "/issues sync" --> E[Issue on tracker]
-    E --> F[Work slices on milestone branch]
-    F -- "/issues pr" --> G["PR/MR with Closes #N"]
-    G --> H[Review & merge]
-    H --> I[Issue auto-closes]
+    A["/issues"] --> B{milestones exist?}
+    B -- no --> C{import or fresh?}
+    C -- import --> D[fetch tracker issues as context]
+    C -- fresh --> E[describe what to build]
+    D --> F[GSD scopes and plans milestones]
+    E --> F
+    B -- yes --> G[resume existing milestone]
+    F -- "/issues sync" --> H[issue on tracker]
+    G -- "/issues sync" --> H
+    H --> I[work slices on milestone branch]
+    I -- "/issues pr" --> J["PR/MR with Closes #N"]
+    J --> K[review & merge — issue auto-closes]
 ```
 
 ### Auto workflow
@@ -55,7 +60,7 @@ flowchart TD
     D --> E
     E -- ROADMAP.md created --> F[hook: sync milestone to tracker issue]
     E -- SUMMARY.md created --> G["hook: create PR with Closes #N"]
-    G --> H[Review & merge — issue auto-closes]
+    G --> H[review & merge — issue auto-closes]
 ```
 
 ## Providers
